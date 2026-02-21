@@ -14,7 +14,6 @@ interface CharacterSelectionImprovedProps {
   darkMode?: boolean;
   characters: Character[];
   onSelectCharacter: (character: Character) => void;
-  viewMode?: 'desktop' | 'tablet' | 'mobile';
 }
 
 export function CharacterSelectionImproved({ 
@@ -23,7 +22,6 @@ export function CharacterSelectionImproved({
   darkMode = false,
   characters,
   onSelectCharacter,
-  viewMode = 'desktop'
 }: CharacterSelectionImprovedProps) {
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -67,7 +65,7 @@ export function CharacterSelectionImproved({
     }
   };
 
-  const isMobile = viewMode === 'mobile';
+  const isMobile = false;
   const showSidebar = !isMobile || !selectedCharacter;
   const showPreview = !isMobile || selectedCharacter;
 

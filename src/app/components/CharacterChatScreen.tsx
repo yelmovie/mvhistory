@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ArrowLeft, Send, Sparkles, User, Gift, Plus, X, Home } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { getOpenAIApiKey } from "../utils/openaiApi";
 
 interface Message {
   id: string;
@@ -158,51 +159,52 @@ export function CharacterChatScreen({ onBack, onHome, darkMode = false, onUnlock
     setIsLoading(true);
 
     try {
-      // OpenAI API 연동
+      // OpenAI API 연동 (env → localStorage 순으로 키 자동 해석)
+      const apiKey = getOpenAIApiKey();
+      if (!apiKey) throw new Error('NO_API_KEY');
+
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
-          'Authorization': 'Bearer YOUR_OPENAI_API_KEY', // 실제 API 키로 교체 필요
-          'Content-Type': 'application/json'
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
-              content: `당신은 한국의 역사 인물 "${selectedCharacter.name}"입니다. 
-              
-초등학생(8-13세)과 대화하고 있습니다. 다음 규칙을 반드시 지켜주세요:
+              content: `당신은 한국의 역사 인물 "${selectedCharacter.name}"입니다.
+시대: ${selectedCharacter.period}. ${selectedCharacter.description}.
 
-1. 언어 수준: 초등학생이 이해하기 쉬운 단어와 문장 사용
-2. 교육적 내용: 역사적 사실, 도덕적 가치, 배울 점 중심으로 대화
-3. 친근한 태도: 부드럽고 친절하게 설명
-4. 긍정적 방향: 항상 희망적이고 교육적인 메시지 전달
-5. 안전한 대화: 부적절한 내용, 폭력, 차별 언급 금지
-6. 호기심 유발: 역사에 흥미를 가질 수 있도록 재미있게 설명
-
-${selectedCharacter.name}의 시대, 업적, 성격을 반영하여 대화하되, 항상 교육적이고 도덕적인 방향으로 이끌어주세요.
-어려운 한자어나 전문 용어는 쉽게 풀어서 설명해주세요.`
+초등학생(8-13세)과 대화하고 있습니다. 반드시 아래 규칙을 지켜주세요:
+1. 초등학생이 이해하는 쉬운 단어와 짧은 문장(2-3문장) 사용
+2. 존댓말을 쓰되 친근하고 따뜻한 톤 유지
+3. 이모지를 적절히 사용해 친근감 표현
+4. 역사적 사실을 재미있게, 정확하게 전달
+5. 폭력·선정·정치적으로 민감한 내용 절대 금지
+6. 어려운 한자어는 풀어서 설명`,
             },
             ...messages.map(msg => ({
               role: msg.sender === 'user' ? 'user' : 'assistant',
-              content: msg.text
+              content: msg.text,
             })),
-            {
-              role: 'user',
-              content: inputMessage
-            }
+            { role: 'user', content: inputMessage },
           ],
           temperature: 0.7,
-          max_tokens: 500
-        })
+          max_tokens: 500,
+        }),
       });
 
       if (!response.ok) {
-        throw new Error('API 호출 실패');
+        const errData = await response.json().catch(() => ({}));
+        const errMsg = (errData as { error?: { message?: string } }).error?.message;
+        if (response.status === 401) throw new Error('INVALID_KEY');
+        if (response.status === 429) throw new Error('RATE_LIMIT');
+        throw new Error(errMsg || `API 오류: ${response.status}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as { choices: Array<{ message: { content: string } }> };
       const aiResponse = data.choices[0].message.content;
 
       const characterResponse: Message = {
@@ -223,15 +225,22 @@ ${selectedCharacter.name}의 시대, 업적, 성격을 반영하여 대화하되
       }
     } catch (error) {
       console.error('API 오류:', error);
-      
-      // API 오류 시 기본 응답 (교육적 내용)
+
+      const errStr = error instanceof Error ? error.message : '';
+      let fallbackText = `좋은 질문이네요! 역사를 공부하는 것은 과거를 통해 현재를 이해하는 일이에요. 😊`;
+      if (errStr === 'NO_API_KEY') {
+        fallbackText = `AI와 실제 대화하려면 화면 오른쪽 상단의 ⚙️ 설정 버튼을 눌러 OpenAI API 키를 입력해주세요! 🔑`;
+      } else if (errStr === 'INVALID_KEY') {
+        fallbackText = `API 키가 올바르지 않아요. 설정에서 키를 다시 확인해주세요. 🔑`;
+      } else if (errStr === 'RATE_LIMIT') {
+        fallbackText = `잠시 사용 한도를 초과했어요. 조금 뒤에 다시 시도해주세요! ⏱️`;
+      }
+
       const fallbackResponse: Message = {
         id: (Date.now() + 1).toString(),
-        text: `좋은 질문이네요! "${inputMessage}"에 대해 말씀드리자면... 역사를 공부하는 것은 과거를 통해 현재를 이해하고 미래를 준비하는 일입니다. 더 궁금한 것이 있나요? 
-        
-💡 OpenAI API 키를 설정하면 실제 AI 대화가 가능합니다!`,
+        text: fallbackText,
         sender: 'character',
-        timestamp: new Date()
+        timestamp: new Date(),
       };
       setMessages(prev => [...prev, fallbackResponse]);
 

@@ -14,7 +14,6 @@ interface CharacterCollectionImprovedProps {
   darkMode?: boolean;
   characters: Character[];
   onSelectCharacter?: (character: Character) => void;
-  viewMode?: 'desktop' | 'tablet' | 'mobile';
 }
 
 export function CharacterCollectionImproved({ 
@@ -23,7 +22,6 @@ export function CharacterCollectionImproved({
   darkMode = false,
   characters,
   onSelectCharacter,
-  viewMode = 'desktop'
 }: CharacterCollectionImprovedProps) {
   const [flippedCards, setFlippedCards] = useState<Set<number>>(new Set());
 
@@ -107,7 +105,7 @@ export function CharacterCollectionImproved({
   return (
     <div className={`min-h-screen transition-colors ${
       darkMode ? 'bg-[#0F172A]' : 'bg-[#FEF7FF]'
-    } ${viewMode === 'mobile' ? 'p-4 py-6' : 'p-6 lg:p-8'}`}>
+    } p-6 lg:p-8`}>
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <motion.div
@@ -153,9 +151,7 @@ export function CharacterCollectionImproved({
           } rounded-[24px] p-6 sm:p-8`}
             style={{ boxShadow: 'var(--shadow-lg)' }}
           >
-            <div className={`flex items-center justify-between gap-6 ${
-              viewMode === 'mobile' ? 'flex-col' : ''
-            }`}>
+            <div className="flex items-center justify-between gap-6">
               {/* Left: Title */}
               <div className="flex-1">
                 <h1 className={`text-3xl lg:text-4xl font-black mb-2 ${
@@ -339,13 +335,7 @@ export function CharacterCollectionImproved({
                     </div>
 
                     {/* Character Cards Grid */}
-                    <div className={`grid gap-4 ${
-                      viewMode === 'mobile' 
-                        ? 'grid-cols-2' 
-                        : viewMode === 'tablet' 
-                          ? 'grid-cols-3' 
-                          : 'grid-cols-4'
-                    }`}>
+                    <div className="grid gap-4 grid-cols-4">
                       {chars.map((character, index) => {
                         const isFlipped = flippedCards.has(character.id);
                         const isLocked = !character.unlocked;

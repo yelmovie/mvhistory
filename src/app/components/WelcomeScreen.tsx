@@ -4,8 +4,6 @@ import {
   ArrowRight, ChevronRight, LogIn, User, LogOut, ChevronLeft, BookMarked,
   Star, Sparkles, Zap, Medal, Gift, Target
 } from "lucide-react";
-import { ViewModeIndicator } from "./ViewModeIndicator";
-import { ViewModeToggle } from "./ViewModeToggle";
 import { useState, useRef, useEffect } from "react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import type { UserProfile } from "../utils/supabaseClient";
@@ -26,13 +24,11 @@ interface WelcomeScreenProps {
   onOpenLogin?: () => void;
   currentUser?: { name: string; email: string } | null;
   onLogout?: () => void;
-  viewMode?: 'desktop' | 'tablet' | 'mobile';
-  onViewModeChange?: (mode: 'desktop' | 'tablet' | 'mobile') => void;
   userProfile?: UserProfile | null;
   isLoadingProfile?: boolean;
-  /** 로그인 후 학습 시작을 자동 실행해야 하는지 여부 */
+  /** ??? ? ?? ??? ?? ???? ??? ?? */
   pendingStart?: boolean;
-  /** pendingStart 소비 후 초기화 콜백 */
+  /** pendingStart ?? ? ??? ?? */
   onClearPendingStart?: () => void;
 }
 
@@ -46,8 +42,6 @@ export function WelcomeScreen({
   onOpenLogin,
   currentUser,
   onLogout,
-  viewMode = 'desktop',
-  onViewModeChange,
   userProfile,
   isLoadingProfile = false,
   pendingStart = false,
@@ -55,7 +49,7 @@ export function WelcomeScreen({
 }: WelcomeScreenProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // 로그인 완료 후 pendingStart가 있으면 자동으로 학습 시작
+  // ??? ?? ? pendingStart? ??? ???? ?? ??
   useEffect(() => {
     if (pendingStart && currentUser) {
       onClearPendingStart?.();
@@ -63,7 +57,7 @@ export function WelcomeScreen({
     }
   }, [pendingStart, currentUser]);
 
-  // 학습 시작 버튼 핸들러: 비로그인이면 로그인 모달 먼저 오픈
+  // ?? ?? ?? ???: ?????? ??? ?? ?? ??
   const handleStartLearning = () => {
     if (!currentUser) {
       onOpenLogin?.();
@@ -208,30 +202,17 @@ export function WelcomeScreen({
                 </div>
               </div>
               <div>
-                <h1 className={`font-bold ${
-                  viewMode === 'mobile' ? 'text-base' : 'text-xl'
-                } bg-gradient-to-r from-[#2563EB] to-[#4F46E5] bg-clip-text text-transparent`}>
-                  AI 한국사 여행
+                <h1 className="font-bold text-xl bg-gradient-to-r from-[#2563EB] to-[#4F46E5] bg-clip-text text-transparent">
+                  AI ??? ??
                 </h1>
-                {viewMode !== 'mobile' && (
-                  <p className={`text-xs ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'}`}>
-                    초등학생을 위한 역사 학습
-                  </p>
-                )}
+                <p className={`text-xs ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'}`}>
+                  ????? ?? ?? ??
+                </p>
               </div>
             </motion.div>
 
             {/* Right Actions */}
             <div className="flex items-center gap-2 sm:gap-3">
-              {/* View Mode Toggle */}
-              {onViewModeChange && viewMode !== 'mobile' && (
-                <ViewModeToggle 
-                  viewMode={viewMode}
-                  onViewModeChange={onViewModeChange}
-                  darkMode={darkMode}
-                />
-              )}
-
               {/* Theme Toggle */}
               <motion.button
                 whileHover={{ scale: 1.05 }}
@@ -249,32 +230,30 @@ export function WelcomeScreen({
               {/* User Section */}
               {currentUser ? (
                 <div className="flex items-center gap-2">
-                  {viewMode !== 'mobile' && (
-                    <div 
-                      className={`px-3 py-2 rounded-[16px] border ${
-                        darkMode 
-                          ? 'bg-[#334155] border-[#475569]' 
-                          : 'bg-gradient-to-r from-[#EEF2FF] to-[#FCE7F3] border-[#E0E7FF]'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <div 
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm"
-                          style={{ background: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)' }}
-                        >
-                          {currentUser.name.charAt(0)}
-                        </div>
-                        <div className="text-left">
-                          <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-[#1F2937]'}`}>
-                            {currentUser.name}
-                          </p>
-                          <p className={`text-xs ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'}`}>
-                            Lv.{userStats.level}
-                          </p>
-                        </div>
+                  <div 
+                    className={`px-3 py-2 rounded-[16px] border ${
+                      darkMode 
+                        ? 'bg-[#334155] border-[#475569]' 
+                        : 'bg-gradient-to-r from-[#EEF2FF] to-[#FCE7F3] border-[#E0E7FF]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-8 h-8 rounded-full flex items-center justify-center text-white font-bold text-sm"
+                        style={{ background: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)' }}
+                      >
+                        {currentUser.name.charAt(0)}
+                      </div>
+                      <div className="text-left">
+                        <p className={`text-xs font-bold ${darkMode ? 'text-white' : 'text-[#1F2937]'}`}>
+                          {currentUser.name}
+                        </p>
+                        <p className={`text-xs ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'}`}>
+                          Lv.{userStats.level}
+                        </p>
                       </div>
                     </div>
-                  )}
+                  </div>
                   <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
@@ -293,16 +272,14 @@ export function WelcomeScreen({
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={onOpenLogin}
-                  className={`flex items-center gap-2 font-bold rounded-[16px] text-white transition-all ${
-                    viewMode === 'mobile' ? 'px-3 py-2 text-xs' : 'px-5 py-2.5 text-sm'
-                  }`}
+                  className="flex items-center gap-2 font-bold rounded-[16px] text-white transition-all px-5 py-2.5 text-sm"
                   style={{
                     background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
                     boxShadow: 'var(--shadow-primary)'
                   }}
                 >
                   <LogIn className="w-4 h-4" strokeWidth={2} />
-                  <span>로그인</span>
+                  <span>???</span>
                 </motion.button>
               )}
             </div>
@@ -317,9 +294,7 @@ export function WelcomeScreen({
                 darkMode ? 'border-[#1E3A8A]/50' : 'border-[#E5E7EB]'
               }`}
             >
-              <div className={`grid gap-2 ${
-                viewMode === 'mobile' ? 'grid-cols-1' : 'grid-cols-3'
-              }`}>
+              <div className="grid gap-2 grid-cols-3">
                 {/* Level & EXP */}
                 <div 
                   className={`rounded-[20px] p-4 backdrop-blur-sm border ${
@@ -333,7 +308,7 @@ export function WelcomeScreen({
                       <span className={`text-xs font-bold ${
                         darkMode ? 'text-white' : 'text-[#1F2937]'
                       }`}>
-                        레벨 {userStats.level}
+                        ?? {userStats.level}
                       </span>
                     </div>
                     <span className={`text-xs ${
@@ -370,7 +345,7 @@ export function WelcomeScreen({
                       <span className={`text-xs font-bold ${
                         darkMode ? 'text-white' : 'text-[#1F2937]'
                       }`}>
-                        인물 카드
+                        ?? ??
                       </span>
                     </div>
                     <span className={`text-xs ${
@@ -408,7 +383,7 @@ export function WelcomeScreen({
                         <span className={`text-xs font-bold ${
                           darkMode ? 'text-white' : 'text-[#1F2937]'
                         }`}>
-                          {userStats.streak}일 연속
+                          {userStats.streak}? ??
                         </span>
                       </div>
                     </div>
@@ -429,13 +404,13 @@ export function WelcomeScreen({
       </header>
 
       {/* Main Content */}
-      <main className={`${viewMode === 'mobile' ? 'px-4 py-8' : 'px-6 py-12'}`}>
+      <main className="px-6 py-12">
         <div className="max-w-7xl mx-auto">
           {/* Hero Section */}
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className={`text-center ${viewMode === 'mobile' ? 'mb-10' : 'mb-16'}`}
+            className="text-center mb-16"
           >
             <motion.div
               initial={{ scale: 0.9 }}
@@ -443,42 +418,32 @@ export function WelcomeScreen({
               transition={{ duration: 0.5, ease: "easeOut" }}
             >
               {/* Spline 3D Animation */}
-              {viewMode !== 'mobile' && (
-                <motion.div 
-                  className={`relative mx-auto mb-8 ${
-                    viewMode === 'tablet' ? 'h-[300px]' : 'h-[400px]'
-                  } rounded-[24px] overflow-hidden`}
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.6, delay: 0.2 }}
-                  style={{
-                    boxShadow: 'var(--shadow-2xl)'
-                  }}
-                >
-                  <iframe 
-                    src="https://my.spline.design/3dtextbluecopy-JuSbMYCCQUXAWrspNiVJU8oP/" 
-                    className="w-full h-full border-0"
-                    title="3D Text Animation"
-                    loading="lazy"
-                  />
-                </motion.div>
-              )}
+              <motion.div 
+                className="relative mx-auto mb-8 h-[400px] rounded-[24px] overflow-hidden"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.6, delay: 0.2 }}
+                style={{ boxShadow: 'var(--shadow-2xl)' }}
+              >
+                <iframe 
+                  src="https://my.spline.design/3dtextbluecopy-JuSbMYCCQUXAWrspNiVJU8oP/" 
+                  className="w-full h-full border-0"
+                  title="3D Text Animation"
+                  loading="lazy"
+                />
+              </motion.div>
 
-              <h2 className={`font-bold leading-tight mb-4 ${
-                viewMode === 'mobile' ? 'text-3xl' : 'text-5xl md:text-6xl'
-              }`}>
+              <h2 className="font-bold leading-tight mb-4 text-5xl md:text-6xl">
                 <span className="bg-gradient-to-r from-[#2563EB] to-[#4F46E5] bg-clip-text text-transparent">
-                  AI와 함께 떠나는
+                  AI? ??? ???
                 </span>
                 <br />
                 <span className={darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}>
-                  즐거운 한국사 여행! 🚀
+                  ??? ????! ??
                 </span>
               </h2>
-              <p className={`${
-                viewMode === 'mobile' ? 'text-base mb-8' : 'text-xl md:text-2xl mb-10'
-              } ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} max-w-3xl mx-auto`}>
-                퀴즈를 풀고 인물 카드를 모으며, 역사 속 위인과 대화해보세요! ✨
+              <p className={`text-xl md:text-2xl mb-10 ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} max-w-3xl mx-auto`}>
+                ??? ?? ?? ??? ????, ??? ?? ??? ?????! ??
               </p>
 
               {/* CTA Button */}
@@ -486,9 +451,7 @@ export function WelcomeScreen({
                 whileHover={{ scale: 1.05, y: -2 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={handleStartLearning}
-                className={`group relative inline-flex items-center gap-3 font-bold rounded-[20px] text-white overflow-hidden ${
-                  viewMode === 'mobile' ? 'px-8 py-4 text-base' : 'px-12 py-6 text-xl'
-                }`}
+                className="group relative inline-flex items-center gap-3 font-bold rounded-[20px] text-white overflow-hidden px-12 py-6 text-xl"
                 style={{
                   background: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)',
                   boxShadow: '0 20px 25px -5px rgb(37 99 235 / 0.2), 0 8px 10px -6px rgb(37 99 235 / 0.2)'
@@ -496,20 +459,16 @@ export function WelcomeScreen({
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-[#D97706] via-[#DB2777] to-[#4F46E5] opacity-0 group-hover:opacity-100 transition-opacity" />
                 <span className="relative flex items-center gap-3">
-                  {currentUser ? '학습 시작하기' : '로그인 후 시작하기'}
+                  {currentUser ? '?? ????' : '??? ? ????'}
                   {currentUser ? (
-                    <ArrowRight className={`${
-                      viewMode === 'mobile' ? 'w-5 h-5' : 'w-6 h-6'
-                    } group-hover:translate-x-1 transition-transform`} strokeWidth={2} />
+                    <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" strokeWidth={2} />
                   ) : (
-                    <LogIn className={`${
-                      viewMode === 'mobile' ? 'w-5 h-5' : 'w-6 h-6'
-                    }`} strokeWidth={2} />
+                    <LogIn className="w-6 h-6" strokeWidth={2} />
                   )}
                 </span>
               </motion.button>
 
-              {/* 비로그인 안내 문구 */}
+              {/* ??? ?? ??? */}
               {!currentUser && (
                 <motion.p
                   initial={{ opacity: 0 }}
@@ -517,29 +476,27 @@ export function WelcomeScreen({
                   transition={{ delay: 0.4 }}
                   className={`mt-3 text-sm ${darkMode ? 'text-[#94A3B8]' : 'text-[#9CA3AF]'}`}
                 >
-                  로그인하면 학습 기록과 인물 카드가 저장됩니다 ✨
+                  ????? ?? ??? ?? ??? ????? ?
                 </motion.p>
               )}
 
               {/* Floating Emojis */}
-              {viewMode !== 'mobile' && (
-                <div className="relative mt-8">
-                  <motion.span
-                    className="absolute left-1/4 text-4xl"
-                    animate={{ y: [-10, 10, -10] }}
-                    transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-                  >
-                    📚
-                  </motion.span>
-                  <motion.span
-                    className="absolute right-1/4 text-4xl"
-                    animate={{ y: [10, -10, 10] }}
-                    transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
-                  >
-                    🎯
-                  </motion.span>
-                </div>
-              )}
+              <div className="relative mt-8 h-16">
+                <motion.span
+                  className="absolute left-1/4 text-4xl"
+                  animate={{ y: [-10, 10, -10] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                >
+                  ??
+                </motion.span>
+                <motion.span
+                  className="absolute right-1/4 text-4xl"
+                  animate={{ y: [10, -10, 10] }}
+                  transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
+                >
+                  ?
+                </motion.span>
+              </div>
             </motion.div>
           </motion.section>
 
@@ -548,17 +505,13 @@ export function WelcomeScreen({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className={viewMode === 'mobile' ? 'mb-12' : 'mb-20'}
+            className="mb-20"
           >
-            <h3 className={`font-bold mb-6 ${
-              viewMode === 'mobile' ? 'text-2xl' : 'text-3xl'
-            } ${darkMode ? 'text-white' : 'text-[#1F2937]'} text-center`}>
-              어떻게 학습하나요? 🤔
+            <h3 className={`font-bold mb-6 text-3xl ${darkMode ? 'text-white' : 'text-[#1F2937]'} text-center`}>
+              ??? ??????
             </h3>
             
-            <div className={`grid gap-4 ${
-              viewMode === 'mobile' ? 'grid-cols-1' : 'md:grid-cols-3'
-            }`}>
+            <div className="grid gap-4 md:grid-cols-3">
               {/* Step 1: Quiz */}
               <motion.button
                 onClick={handleStartLearning}
@@ -566,24 +519,20 @@ export function WelcomeScreen({
                 whileTap={{ scale: 0.98 }}
                 className={`group relative overflow-hidden rounded-[24px] transition-all border ${
                   darkMode ? 'bg-[#1E293B]/80 border-[#2563EB]/20' : 'bg-white border-[#E5E7EB]'
-                } ${viewMode === 'mobile' ? 'p-6' : 'p-8'} text-left`}
+                } p-8 text-left`}
                 style={{
                   boxShadow: darkMode 
                     ? '0 4px 6px -1px rgb(0 0 0 / 0.3)'
                     : '0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05)'
                 }}
               >
-                {/* Background Pattern - Subtle */}
                 <div className="absolute top-0 right-0 opacity-5">
                   <div className="w-32 h-32 bg-[#2563EB] rounded-full blur-3xl" />
                 </div>
-
                 <div className="relative">
                   <div className="flex items-center justify-between mb-4">
                     <div 
-                      className={`${
-                        viewMode === 'mobile' ? 'w-14 h-14' : 'w-16 h-16'
-                      } rounded-[16px] flex items-center justify-center group-hover:scale-110 transition-transform`}
+                      className="w-16 h-16 rounded-[16px] flex items-center justify-center group-hover:scale-110 transition-transform"
                       style={{
                         background: darkMode ? 'rgba(37, 99, 235, 0.2)' : 'rgba(37, 99, 235, 0.1)',
                         border: darkMode ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid rgba(37, 99, 235, 0.2)'
@@ -597,22 +546,14 @@ export function WelcomeScreen({
                       STEP 1
                     </div>
                   </div>
-
-                  <h4 className={`font-bold mb-2 ${
-                    viewMode === 'mobile' ? 'text-lg' : 'text-2xl'
-                  } ${darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}`}>
-                    역사 퀴즈 풀기 🎯
+                  <h4 className={`font-bold mb-2 text-2xl ${darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}`}>
+                    ?? ?? ??
                   </h4>
-                  <p className={`${
-                    viewMode === 'mobile' ? 'text-sm' : 'text-base'
-                  } ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} mb-4`}>
-                    500개의 초등학생 맞춤 퀴즈로 한국사를 재미있게 학습하세요!
+                  <p className={`text-base ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} mb-4`}>
+                    500?? ??? ?? ??? ??? ???? ?????!
                   </p>
-
-                  <div className={`flex items-center gap-2 ${
-                    darkMode ? 'text-[#60A5FA]' : 'text-[#2563EB]'
-                  }`}>
-                    <span className="text-sm font-bold">지금 시작하기</span>
+                  <div className={`flex items-center gap-2 ${darkMode ? 'text-[#60A5FA]' : 'text-[#2563EB]'}`}>
+                    <span className="text-sm font-bold">?? ????</span>
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeWidth={2} />
                   </div>
                 </div>
@@ -625,7 +566,7 @@ export function WelcomeScreen({
                 whileTap={{ scale: 0.98 }}
                 className={`group relative overflow-hidden rounded-[24px] transition-all border ${
                   darkMode ? 'bg-[#1E293B]/80 border-[#2563EB]/20' : 'bg-white border-[#E5E7EB]'
-                } ${viewMode === 'mobile' ? 'p-6' : 'p-8'} text-left`}
+                } p-8 text-left`}
                 style={{
                   boxShadow: darkMode 
                     ? '0 4px 6px -1px rgb(0 0 0 / 0.3)'
@@ -635,13 +576,10 @@ export function WelcomeScreen({
                 <div className="absolute top-0 right-0 opacity-5">
                   <div className="w-32 h-32 bg-[#2563EB] rounded-full blur-3xl" />
                 </div>
-
                 <div className="relative">
                   <div className="flex items-center justify-between mb-4">
                     <div 
-                      className={`${
-                        viewMode === 'mobile' ? 'w-14 h-14' : 'w-16 h-16'
-                      } rounded-[16px] flex items-center justify-center group-hover:scale-110 transition-transform`}
+                      className="w-16 h-16 rounded-[16px] flex items-center justify-center group-hover:scale-110 transition-transform"
                       style={{
                         background: darkMode ? 'rgba(37, 99, 235, 0.2)' : 'rgba(37, 99, 235, 0.1)',
                         border: darkMode ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid rgba(37, 99, 235, 0.2)'
@@ -655,22 +593,14 @@ export function WelcomeScreen({
                       STEP 2
                     </div>
                   </div>
-
-                  <h4 className={`font-bold mb-2 ${
-                    viewMode === 'mobile' ? 'text-lg' : 'text-2xl'
-                  } ${darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}`}>
-                    역사 인물과 대화 💬
+                  <h4 className={`font-bold mb-2 text-2xl ${darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}`}>
+                    ?? ??? ??
                   </h4>
-                  <p className={`${
-                    viewMode === 'mobile' ? 'text-sm' : 'text-base'
-                  } ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} mb-4`}>
-                    AI 챗봇으로 세종대왕, 이순신과 직접 대화하며 배워보세요!
+                  <p className={`text-base ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} mb-4`}>
+                    AI ?? ??? ?? ????, ??? ?? ???? ?????!
                   </p>
-
-                  <div className={`flex items-center gap-2 ${
-                    darkMode ? 'text-[#60A5FA]' : 'text-[#2563EB]'
-                  }`}>
-                    <span className="text-sm font-bold">인물 만나기</span>
+                  <div className={`flex items-center gap-2 ${darkMode ? 'text-[#60A5FA]' : 'text-[#2563EB]'}`}>
+                    <span className="text-sm font-bold">?? ??</span>
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeWidth={2} />
                   </div>
                 </div>
@@ -683,7 +613,7 @@ export function WelcomeScreen({
                 whileTap={{ scale: 0.98 }}
                 className={`group relative overflow-hidden rounded-[24px] transition-all border ${
                   darkMode ? 'bg-[#1E293B]/80 border-[#2563EB]/20' : 'bg-white border-[#E5E7EB]'
-                } ${viewMode === 'mobile' ? 'p-6' : 'p-8'} text-left`}
+                } p-8 text-left`}
                 style={{
                   boxShadow: darkMode 
                     ? '0 4px 6px -1px rgb(0 0 0 / 0.3)'
@@ -693,13 +623,10 @@ export function WelcomeScreen({
                 <div className="absolute top-0 right-0 opacity-5">
                   <div className="w-32 h-32 bg-[#2563EB] rounded-full blur-3xl" />
                 </div>
-
                 <div className="relative">
                   <div className="flex items-center justify-between mb-4">
                     <div 
-                      className={`${
-                        viewMode === 'mobile' ? 'w-14 h-14' : 'w-16 h-16'
-                      } rounded-[16px] flex items-center justify-center group-hover:scale-110 transition-transform`}
+                      className="w-16 h-16 rounded-[16px] flex items-center justify-center group-hover:scale-110 transition-transform"
                       style={{
                         background: darkMode ? 'rgba(37, 99, 235, 0.2)' : 'rgba(37, 99, 235, 0.1)',
                         border: darkMode ? '1px solid rgba(37, 99, 235, 0.3)' : '1px solid rgba(37, 99, 235, 0.2)'
@@ -713,16 +640,11 @@ export function WelcomeScreen({
                       STEP 3
                     </div>
                   </div>
-
-                  <h4 className={`font-bold mb-2 ${
-                    viewMode === 'mobile' ? 'text-lg' : 'text-2xl'
-                  } ${darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}`}>
-                    인물 카드 수집 🏆
+                  <h4 className={`font-bold mb-2 text-2xl ${darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}`}>
+                    ?? ?? ??
                   </h4>
-                  <p className={`${
-                    viewMode === 'mobile' ? 'text-sm' : 'text-base'
-                  } ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} mb-4`}>
-                    퀴즈를 풀면서 210명의 역사 인물 카드를 모으세요!
+                  <p className={`text-base ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} mb-4`}>
+                    ?? ? ?? ?? 210?? ??? ?? ???? ?????!
                   </p>
 
                   <div 
@@ -735,14 +657,14 @@ export function WelcomeScreen({
                     <p className={`text-xs ${
                       darkMode ? 'text-[#93C5FD]' : 'text-[#2563EB]'
                     }`}>
-                      💡 퀴즈 5개 이상 맞추거나 인물과 10턴 대화하면 카드 획득!
+                      ?? ?? 5? ?? ???? ??? 10? ???? ?? ??!
                     </p>
                   </div>
 
                   <div className={`flex items-center gap-2 ${
                     darkMode ? 'text-[#60A5FA]' : 'text-[#2563EB]'
                   }`}>
-                    <span className="text-sm font-bold">컬렉션 보기</span>
+                    <span className="text-sm font-bold">??? ??</span>
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeWidth={2} />
                   </div>
                 </div>
@@ -757,56 +679,46 @@ export function WelcomeScreen({
             transition={{ delay: 0.2 }}
           >
             <div className="flex items-center justify-between mb-6">
-              <h3 className={`font-bold ${
-                viewMode === 'mobile' ? 'text-2xl' : 'text-3xl'
-              } ${darkMode ? 'text-white' : 'text-[#1F2937]'}`}>
-                더 많은 역사 체험 🎨
+              <h3 className={`font-bold text-3xl ${darkMode ? 'text-white' : 'text-[#1F2937]'}`}>
+                ?? ??? ?? ??
               </h3>
-
-              {/* Navigation Arrows */}
-              {viewMode !== 'mobile' && (
-                <div className="flex gap-2">
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleScroll('left')}
-                    className={`p-3 rounded-[12px] transition-all ${
-                      darkMode ? 'bg-[#334155] hover:bg-[#475569]' : 'bg-white hover:bg-[#F9FAFB]'
-                    }`}
-                    style={{ boxShadow: 'var(--shadow-md)' }}
-                  >
-                    <ChevronLeft className="w-5 h-5" strokeWidth={2} />
-                  </motion.button>
-                  <motion.button
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    onClick={() => handleScroll('right')}
-                    className={`p-3 rounded-[12px] transition-all ${
-                      darkMode ? 'bg-[#334155] hover:bg-[#475569]' : 'bg-white hover:bg-[#F9FAFB]'
-                    }`}
-                    style={{ boxShadow: 'var(--shadow-md)' }}
-                  >
-                    <ChevronRight className="w-5 h-5" strokeWidth={2} />
-                  </motion.button>
-                </div>
-              )}
+              <div className="flex gap-2">
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleScroll('left')}
+                  className={`p-3 rounded-[12px] transition-all ${
+                    darkMode ? 'bg-[#334155] hover:bg-[#475569]' : 'bg-white hover:bg-[#F9FAFB]'
+                  }`}
+                  style={{ boxShadow: 'var(--shadow-md)' }}
+                >
+                  <ChevronLeft className="w-5 h-5" strokeWidth={2} />
+                </motion.button>
+                <motion.button
+                  whileHover={{ scale: 1.05 }}
+                  whileTap={{ scale: 0.95 }}
+                  onClick={() => handleScroll('right')}
+                  className={`p-3 rounded-[12px] transition-all ${
+                    darkMode ? 'bg-[#334155] hover:bg-[#475569]' : 'bg-white hover:bg-[#F9FAFB]'
+                  }`}
+                  style={{ boxShadow: 'var(--shadow-md)' }}
+                >
+                  <ChevronRight className="w-5 h-5" strokeWidth={2} />
+                </motion.button>
+              </div>
             </div>
 
             <div 
               ref={scrollContainerRef}
-              className={
-                viewMode === 'mobile' 
-                  ? 'grid grid-cols-1 gap-4' 
-                  : 'flex gap-6 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-4'
-              }
-              style={viewMode !== 'mobile' ? { scrollbarWidth: 'none', msOverflowStyle: 'none' } : {}}
+              className="flex gap-6 overflow-x-auto scrollbar-hide snap-x snap-mandatory pb-4"
+              style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
             >
               {/* AI Goods Generator */}
               <motion.button
                 whileHover={{ y: -4 }}
                 onClick={onGoToGoodsGenerator}
                 className={`group ${
-                  viewMode === 'mobile' ? 'w-full' : 'flex-shrink-0 w-80 snap-center'
+                  'flex-shrink-0 w-80 snap-center'
                 } rounded-[20px] overflow-hidden transition-all ${
                   darkMode ? 'bg-[#1E293B]' : 'bg-white'
                 } text-left`}
@@ -815,7 +727,7 @@ export function WelcomeScreen({
                 <div className="aspect-[4/3] relative overflow-hidden">
                   <ImageWithFallback 
                     src={goodsImage}
-                    alt="AI 역사 굿즈 만들기"
+                    alt="AI ?? ?? ???"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className={`absolute inset-0 ${
@@ -838,12 +750,12 @@ export function WelcomeScreen({
                   <h4 className={`font-bold text-lg mb-2 ${
                     darkMode ? 'text-white' : 'text-[#1F2937]'
                   } group-hover:text-[#8B5CF6] transition-colors`}>
-                    AI 역사 굿즈 만들기 ✨
+                    AI ?? ?? ??? ?
                   </h4>
                   <p className={`text-sm ${
                     darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
                   }`}>
-                    역사 인물과 유물로 나만의 창의적인 굿즈를 만들어보세요!
+                    ?? ??? ??? ??? ???? ??? ??????!
                   </p>
                 </div>
               </motion.button>
@@ -853,7 +765,7 @@ export function WelcomeScreen({
                 whileHover={{ y: -4 }}
                 onClick={() => window.open('https://artsandculture.google.com/streetview/%EA%B5%AD%EB%A6%BD%EC%A4%91%EC%95%99%EB%B0%95%EB%AC%BC%EA%B4%80/bgGbp0dbiyydYw?hl=ko&sv_lng=126.98118893974714&sv_lat=37.52390286881644&sv_h=76&sv_p=0&sv_pid=Ki9KQM__LJebq_uYpYyGBQ&sv_z=1', '_blank')}
                 className={`group ${
-                  viewMode === 'mobile' ? 'w-full' : 'flex-shrink-0 w-80 snap-center'
+                  'flex-shrink-0 w-80 snap-center'
                 } rounded-[20px] overflow-hidden transition-all ${
                   darkMode ? 'bg-[#1E293B]' : 'bg-white'
                 } text-left`}
@@ -862,7 +774,7 @@ export function WelcomeScreen({
                 <div className="aspect-[4/3] relative overflow-hidden">
                   <ImageWithFallback 
                     src={museumImage}
-                    alt="국립중앙박물관 둘러보기"
+                    alt="??????? ????"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className={`absolute inset-0 ${
@@ -885,12 +797,12 @@ export function WelcomeScreen({
                   <h4 className={`font-bold text-lg mb-2 ${
                     darkMode ? 'text-white' : 'text-[#1F2937]'
                   } group-hover:text-[#6366F1] transition-colors`}>
-                    국립중앙박물관 둘러보기 🏛️
+                    ??????? ???? ???
                   </h4>
                   <p className={`text-sm ${
                     darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
                   }`}>
-                    우리나라 대표 박물관의 소장품과 전시실을 가상으로 체험하세요!
+                    ???? ?? ???? ???? ???? ???? ?????!
                   </p>
                 </div>
               </motion.button>
@@ -900,7 +812,7 @@ export function WelcomeScreen({
                 whileHover={{ y: -4 }}
                 onClick={() => window.open('https://my.heritage.go.kr/main/index.do', '_blank')}
                 className={`group ${
-                  viewMode === 'mobile' ? 'w-full' : 'flex-shrink-0 w-80 snap-center'
+                  'flex-shrink-0 w-80 snap-center'
                 } rounded-[20px] overflow-hidden transition-all ${
                   darkMode ? 'bg-[#1E293B]' : 'bg-white'
                 } text-left`}
@@ -909,7 +821,7 @@ export function WelcomeScreen({
                 <div className="aspect-[4/3] relative overflow-hidden">
                   <ImageWithFallback 
                     src={artifactImage}
-                    alt="우리나라 유물 박사되기"
+                    alt="???? ?? ????"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className={`absolute inset-0 ${
@@ -932,12 +844,12 @@ export function WelcomeScreen({
                   <h4 className={`font-bold text-lg mb-2 ${
                     darkMode ? 'text-white' : 'text-[#1F2937]'
                   } group-hover:text-[#3B82F6] transition-colors`}>
-                    우리나라 유물 박사되기 🏺
+                    ???? ?? ???? ??
                   </h4>
                   <p className={`text-sm ${
                     darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
                   }`}>
-                    문화재청에서 우리나라의 소중한 유물을 탐험하고 배워보세요!
+                    ?????? ????? ??? ??? ???? ?????!
                   </p>
                 </div>
               </motion.button>
@@ -947,7 +859,7 @@ export function WelcomeScreen({
                 whileHover={{ y: -4 }}
                 onClick={() => window.open('https://www.youtube.com/watch?v=UEpxN7RPTDU&list=PLYiHEYASbCxI4_Rw4Ict2G0mzNAd4dQd8', '_blank')}
                 className={`group ${
-                  viewMode === 'mobile' ? 'w-full' : 'flex-shrink-0 w-80 snap-center'
+                  'flex-shrink-0 w-80 snap-center'
                 } rounded-[20px] overflow-hidden transition-all ${
                   darkMode ? 'bg-[#1E293B]' : 'bg-white'
                 } text-left`}
@@ -956,7 +868,7 @@ export function WelcomeScreen({
                 <div className="aspect-[4/3] relative overflow-hidden">
                   <ImageWithFallback 
                     src={comicsImage}
-                    alt="역사 만화 보기"
+                    alt="?? ?? ??"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className={`absolute inset-0 ${
@@ -979,12 +891,12 @@ export function WelcomeScreen({
                   <h4 className={`font-bold text-lg mb-2 ${
                     darkMode ? 'text-white' : 'text-[#1F2937]'
                   } group-hover:text-[#10B981] transition-colors`}>
-                    역사 만화 보기 📖
+                    ?? ?? ?? ??
                   </h4>
                   <p className={`text-sm ${
                     darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
                   }`}>
-                    재미있는 웹툰으로 배우는 한국사 이야기를 즐겨보세요!
+                    ???? ???? ??? ??? ???? ?????!
                   </p>
                 </div>
               </motion.button>
@@ -996,37 +908,29 @@ export function WelcomeScreen({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className={`${
-              viewMode === 'mobile' ? 'mt-12 p-6' : 'mt-16 p-10'
-            } rounded-[20px] ${
+            className={`mt-16 p-10 rounded-[20px] ${
               darkMode 
                 ? 'bg-gradient-to-br from-[#1E293B] to-[#334155]' 
                 : 'bg-gradient-to-br from-[#EEF2FF] to-[#FCE7F3]'
             }`}
           >
             <div className="text-center mb-8">
-              <h3 className={`font-bold ${
-                viewMode === 'mobile' ? 'text-2xl' : 'text-3xl'
-              } ${darkMode ? 'text-white' : 'text-[#1F2937]'} mb-3`}>
-                이런 걸 배울 수 있어요! 📚
+              <h3 className={`font-bold text-3xl ${darkMode ? 'text-white' : 'text-[#1F2937]'} mb-3`}>
+                ?? ?? ??????! ??
               </h3>
-              <p className={`${
-                viewMode === 'mobile' ? 'text-sm' : 'text-base'
-              } ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'}`}>
-                초등학생을 위해 특별히 준비한 한국사 학습 콘텐츠
+              <p className={`text-base ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'}`}>
+                ?????? ????? ???? ??? ??? ??
               </p>
             </div>
 
-            <div className={`grid gap-4 ${
-              viewMode === 'mobile' ? 'grid-cols-1' : 'md:grid-cols-2'
-            }`}>
+            <div className="grid gap-4 md:grid-cols-2">
               {[
-                '고조선부터 근현대까지 한국사 전체 시대',
-                '210명의 주요 역사 인물 이야기',
-                '500개의 초등학생 맞춤 퀴즈',
-                '중요한 역사 사건과 문화유산',
-                '3단계 힌트 시스템으로 쉬운 학습',
-                'AI 챗봇과 함께하는 대화형 학습'
+                '?? ??? ??? ??? ?? ??',
+                '210?? ?? ?? ?? ?? ???',
+                '500?? ?? ?? ?? ??',
+                '?? ??? ?? ????',
+                '3?? ??? ??? ?? ??',
+                'AI ?? ?? ?? ?? ??'
               ].map((item, index) => (
                 <motion.div
                   key={index}
@@ -1045,9 +949,7 @@ export function WelcomeScreen({
                   >
                     <Star className="w-4 h-4 text-white fill-white" strokeWidth={2} />
                   </div>
-                  <span className={`${
-                    viewMode === 'mobile' ? 'text-sm' : 'text-base'
-                  } ${darkMode ? 'text-[#F8FAFC]' : 'text-[#1F2937]'} font-medium`}>
+                  <span className={`text-base ${darkMode ? 'text-[#F8FAFC]' : 'text-[#1F2937]'} font-medium`}>
                     {item}
                   </span>
                 </motion.div>
@@ -1063,7 +965,7 @@ export function WelcomeScreen({
         }`}>
           <div className="max-w-7xl mx-auto px-6 text-center">
             <p className={`text-sm ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'}`}>
-              © 2025 AI 한국사 여행. 초등학생을 위한 재미있는 역사 학습 플랫폼
+              ? 2025 AI ??? ??. ????? ?? ???? ?? ?? ???
             </p>
           </div>
         </footer>

@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { AnimatedBackground } from "./components/AnimatedBackground";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { LoginModal } from "./components/LoginModal";
-import { ViewModeIndicator } from "./components/ViewModeIndicator";
 import { CharacterUnlockPopup } from "./components/CharacterUnlockPopup";
 import { CharacterCollectionImproved } from "./components/CharacterCollectionImproved";
 import { CharacterSelectionImproved } from "./components/CharacterSelectionImproved";
@@ -67,7 +66,6 @@ export default function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
-  const [viewMode, setViewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [unlockedCharacter, setUnlockedCharacter] = useState<Character | null>(null);
   const [unlockReason, setUnlockReason] = useState<'quiz' | 'chat'>('quiz');
   const [showUnlockPopup, setShowUnlockPopup] = useState(false);
@@ -395,27 +393,12 @@ export default function App() {
     // Keep anonymous session in Supabase
   };
 
-  // Get viewport width based on view mode
-  const getViewportWidth = () => {
-    switch (viewMode) {
-      case 'mobile':
-        return 'max-w-[375px]';
-      case 'tablet':
-        return 'max-w-[768px]';
-      case 'desktop':
-      default:
-        return 'max-w-full';
-    }
-  };
-
   return (
     <div className={`relative min-h-screen overflow-x-hidden ${darkMode ? 'dark' : ''}`}>
       <AnimatedBackground darkMode={darkMode} />
       
-      <div className="relative z-10 flex justify-center">
-        <div className={`w-full ${getViewportWidth()} transition-all duration-300 ${
-          viewMode !== 'desktop' ? 'border-x-2 border-gray-300 dark:border-gray-700' : ''
-        }`}>
+      <div className="relative z-10">
+        <div className="w-full">
         {currentScreen === 'welcome' && (
           <>
             <WelcomeScreen 
@@ -430,8 +413,6 @@ export default function App() {
               onOpenLogin={() => setIsLoginModalOpen(true)}
               currentUser={currentUser}
               onLogout={handleLogout}
-              viewMode={viewMode}
-              onViewModeChange={setViewMode}
               userProfile={userProfile}
               isLoadingProfile={isLoadingProfile}
               pendingStart={pendingStart}
@@ -451,7 +432,6 @@ export default function App() {
             onSelectPeriod={handleSelectPeriod}
             onBack={handleBackToWelcome}
             darkMode={darkMode}
-            viewMode={viewMode}
             completedQuestions={completedQuestions}
             quizData={mappedQuizData}
           />
@@ -463,7 +443,6 @@ export default function App() {
             onBack={() => setCurrentScreen('welcome')}
             onHome={handleBackToWelcome}
             darkMode={darkMode}
-            viewMode={viewMode}
             onSelectCharacter={(character) => {
               setSelectedCharacter(character);
               setCurrentScreen('ai-chat');
@@ -517,7 +496,6 @@ export default function App() {
             onBack={() => setCurrentScreen('welcome')}
             onHome={handleBackToWelcome}
             darkMode={darkMode}
-            viewMode={viewMode}
             onSelectCharacter={(character) => {
               setSelectedCharacter(character);
               setCurrentScreen('ai-chat');
@@ -530,7 +508,6 @@ export default function App() {
             character={selectedCharacter}
             onClose={() => setCurrentScreen('character-selection')}
             darkMode={darkMode}
-            viewMode={viewMode}
           />
         )}
 
@@ -556,7 +533,6 @@ export default function App() {
             onBack={() => setCurrentScreen('welcome')}
             onHome={handleBackToWelcome}
             darkMode={darkMode}
-            viewMode={viewMode}
           />
         )}
 
@@ -575,11 +551,6 @@ export default function App() {
         )}
         </div>
       </div>
-
-      {/* Global View Mode Indicator - shown on all screens except welcome */}
-      {currentScreen !== 'welcome' && (
-        <ViewModeIndicator viewMode={viewMode} darkMode={darkMode} />
-      )}
 
       {/* Character Unlock Popup */}
       <CharacterUnlockPopup

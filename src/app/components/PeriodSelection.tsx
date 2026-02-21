@@ -13,7 +13,6 @@ interface PeriodSelectionProps {
   onSelectPeriod: (period: string) => void;
   onBack: () => void;
   darkMode?: boolean;
-  viewMode?: 'desktop' | 'tablet' | 'mobile';
   completedQuestions?: number[];
   quizData?: any;
 }
@@ -22,7 +21,6 @@ export function PeriodSelection({
   onSelectPeriod, 
   onBack, 
   darkMode = false, 
-  viewMode = 'desktop',
   completedQuestions = [],
   quizData = {}
 }: PeriodSelectionProps) {
@@ -47,11 +45,11 @@ export function PeriodSelection({
   const periods = [
     {
       id: 'three-kingdoms',
-      label: '삼국시대 이전',
-      description: '고조선과 초기 역사',
-      emoji: '🌄',
+      label: '???? ??',
+      description: '???? ?? ??',
+      emoji: '??',
       icon: Crown,
-      borderColor: '#92400E', // 갈색/베이지
+      borderColor: '#92400E', // ??/???
       borderGradient: 'linear-gradient(135deg, #92400E 0%, #D97706 100%)',
       iconBg: 'linear-gradient(135deg, #F59E0B 0%, #F97316 100%)',
       imageUrl: threeKingdomsImage,
@@ -59,11 +57,11 @@ export function PeriodSelection({
     },
     {
       id: 'three-kingdoms-period',
-      label: '삼국시대',
-      description: '고구려, 백제, 신라',
-      emoji: '🏰',
+      label: '????',
+      description: '???, ??, ??',
+      emoji: '??',
       icon: Castle,
-      borderColor: '#059669', // 초록색
+      borderColor: '#059669', // ???
       borderGradient: 'linear-gradient(135deg, #059669 0%, #10B981 100%)',
       iconBg: 'linear-gradient(135deg, #10B981 0%, #34D399 100%)',
       imageUrl: threeKingdomsPeriodImage,
@@ -71,11 +69,11 @@ export function PeriodSelection({
     },
     {
       id: 'goryeo',
-      label: '고려시대',
-      description: '문화와 과학의 발전',
-      emoji: '📖',
+      label: '????',
+      description: '??? ??? ??',
+      emoji: '??',
       icon: Book,
-      borderColor: '#0891B2', // 청록색
+      borderColor: '#0891B2', // ???
       borderGradient: 'linear-gradient(135deg, #0891B2 0%, #06B6D4 100%)',
       iconBg: 'linear-gradient(135deg, #06B6D4 0%, #22D3EE 100%)',
       imageUrl: goryeoImage,
@@ -83,11 +81,11 @@ export function PeriodSelection({
     },
     {
       id: 'joseon',
-      label: '조선시대',
-      description: '한글과 조선의 왕들',
-      emoji: '📜',
+      label: '????',
+      description: '??? ??? ??',
+      emoji: '??',
       icon: Landmark,
-      borderColor: '#DC2626', // 빨강/금색
+      borderColor: '#DC2626', // ??/??
       borderGradient: 'linear-gradient(135deg, #DC2626 0%, #F59E0B 100%)',
       iconBg: 'linear-gradient(135deg, #EF4444 0%, #FBBF24 100%)',
       imageUrl: joseonImage,
@@ -95,11 +93,11 @@ export function PeriodSelection({
     },
     {
       id: 'modern',
-      label: '근현대',
-      description: '독립운동과 현대사',
-      emoji: '🚀',
+      label: '???',
+      description: '????? ???',
+      emoji: '??',
       icon: Clock,
-      borderColor: '#1E40AF', // 파랑/남색
+      borderColor: '#1E40AF', // ??/??
       borderGradient: 'linear-gradient(135deg, #1E40AF 0%, #6366F1 100%)',
       iconBg: 'linear-gradient(135deg, #3B82F6 0%, #8B5CF6 100%)',
       imageUrl: modernImage,
@@ -107,9 +105,9 @@ export function PeriodSelection({
     },
     {
       id: 'person',
-      label: '역사 속 인물과 대화하기',
-      description: 'AI와 함께 역사 인물 만나기',
-      emoji: '💬',
+      label: '?? ? ??? ????',
+      description: 'AI? ?? ?? ?? ???',
+      emoji: '??',
       icon: User,
       borderColor: '#EC4899',
       borderGradient: 'linear-gradient(135deg, #EC4899 0%, #F472B6 100%)',
@@ -132,9 +130,7 @@ export function PeriodSelection({
 
   return (
     <div 
-      className={`min-h-screen transition-colors duration-300 ${
-        viewMode === 'mobile' ? 'p-4 py-6' : 'p-6 lg:p-12'
-      } ${darkMode ? 'bg-[#0F172A]' : 'bg-[#FEF7FF]'}`}
+      className={`min-h-screen transition-colors duration-300 p-6 lg:p-12 ${darkMode ? 'bg-[#0F172A]' : 'bg-[#FEF7FF]'}`}
     >
       <div className="max-w-7xl mx-auto">
         {/* Header */}
@@ -162,25 +158,19 @@ export function PeriodSelection({
               <h1 className={`text-3xl lg:text-4xl font-black mb-2 ${
                 darkMode ? 'text-white' : 'text-[#1F2937]'
               }`}>
-                시대 선택하기
+                ?? ????
               </h1>
               <p className={`text-sm lg:text-base ${
                 darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
               }`}>
-                탐험하고 싶은 역사 시대를 선택해주세요 🏛️
+                ???? ?? ?? ??? ?????? ???
               </p>
             </div>
           </div>
         </motion.div>
 
         {/* 2x3 Grid Cards */}
-        <div className={`grid gap-6 ${
-          viewMode === 'mobile' 
-            ? 'grid-cols-1' 
-            : viewMode === 'tablet' 
-              ? 'grid-cols-2' 
-              : 'grid-cols-2 lg:grid-cols-3'
-        }`}>
+        <div className="grid gap-6 grid-cols-2 lg:grid-cols-3">
           {periods.map((period, index) => {
             const isSelected = selectedPeriod === period.id;
             const isHovered = hoveredPeriod === period.id;
@@ -210,7 +200,7 @@ export function PeriodSelection({
                     : `3px solid ${darkMode ? '#334155' : '#E5E7EB'}`
                 }}
               >
-                {/* Special Sparkle Effect for "역사 속 인물" */}
+                {/* Special Sparkle Effect for "?? ? ??" */}
                 {period.isSpecial && (
                   <motion.div
                     className="absolute inset-0 pointer-events-none"
@@ -339,8 +329,8 @@ export function PeriodSelection({
                         >
                           <Lock className="w-12 h-12 text-white mx-auto mb-2" strokeWidth={2} />
                         </motion.div>
-                        <p className="text-white font-bold text-sm">잠긴 시대</p>
-                        <p className="text-white/80 text-xs mt-1">이전 시대를 완료하세요</p>
+                        <p className="text-white font-bold text-sm">?? ??</p>
+                        <p className="text-white/80 text-xs mt-1">?? ??? ?????</p>
                       </div>
                     </motion.div>
                   )}
@@ -368,7 +358,7 @@ export function PeriodSelection({
                           <span className={`text-xs font-semibold ${
                             darkMode ? 'text-[#94A3B8]' : 'text-[#9CA3AF]'
                           }`}>
-                            완료: {stats.completedCount} / {stats.totalQuestions}
+                            ??: {stats.completedCount} / {stats.totalQuestions}
                           </span>
                           <span className={`text-xs font-bold ${
                             stats.percentage === 100 
@@ -401,7 +391,7 @@ export function PeriodSelection({
                           <div className="flex items-center gap-1 mt-1">
                             <Check className="w-3 h-3 text-[#10B981]" />
                             <span className="text-xs font-semibold text-[#10B981]">
-                              완료!
+                              ??!
                             </span>
                           </div>
                         )}
@@ -426,7 +416,7 @@ export function PeriodSelection({
                     }}
                   />
 
-                  {/* Special Badge for "역사 속 인물" */}
+                  {/* Special Badge for "?? ? ??" */}
                   {period.isSpecial && (
                     <motion.div
                       className="mt-3 inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-xs font-bold text-white"
@@ -448,7 +438,7 @@ export function PeriodSelection({
                       }}
                     >
                       <Sparkles className="w-3 h-3" strokeWidth={2} />
-                      AI 대화 체험
+                      AI ?? ??
                     </motion.div>
                   )}
                 </div>
@@ -471,7 +461,7 @@ export function PeriodSelection({
           <p className={`text-sm text-center ${
             darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
           }`}>
-            💡 <span className="font-bold">Tip:</span> 각 시대를 선택하면 재미있는 퀴즈가 시작됩니다!
+            ?? <span className="font-bold">Tip:</span> ? ??? ???? ???? ??? ?????!
           </p>
         </motion.div>
       </div>

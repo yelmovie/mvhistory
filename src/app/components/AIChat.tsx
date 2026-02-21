@@ -15,14 +15,12 @@ interface AIChatProps {
   character: Character;
   onClose: () => void;
   darkMode?: boolean;
-  viewMode?: 'desktop' | 'tablet' | 'mobile';
 }
 
 export function AIChat({ 
   character, 
   onClose, 
   darkMode = false,
-  viewMode = 'desktop'
 }: AIChatProps) {
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -105,37 +103,29 @@ export function AIChat({
     <div className={`min-h-screen ${
       darkMode ? 'bg-gray-900' : 'bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50'
     }`}>
-      <div className={`${
-        viewMode === 'mobile' ? 'max-w-full' : 'max-w-4xl'
-      } mx-auto h-screen flex flex-col`}>
+      <div className="max-w-4xl mx-auto h-screen flex flex-col">
         {/* Header */}
         <header className={`sticky top-0 z-50 ${
           darkMode ? 'bg-gray-900/95 border-gray-800' : 'bg-white/95 border-gray-200'
         } backdrop-blur-xl border-b shadow-sm`}>
-          <div className={`flex items-center ${
-            viewMode === 'mobile' ? 'px-3 py-3 gap-3' : 'px-6 py-4 gap-4'
-          }`}>
+          <div className="flex items-center px-6 py-4 gap-4">
             {/* Back Button */}
             <motion.button
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
               onClick={onClose}
-              className={`flex items-center gap-2 ${
-                viewMode === 'mobile' ? 'px-3 py-1.5 text-sm' : 'px-4 py-2 text-base'
-              } ${
+              className={`flex items-center gap-2 px-4 py-2 text-base ${
                 darkMode ? 'bg-gray-800 hover:bg-gray-750' : 'bg-gray-100 hover:bg-gray-200'
               } rounded-xl transition-colors flex-shrink-0`}
             >
-              <ArrowLeft className={viewMode === 'mobile' ? 'w-4 h-4' : 'w-5 h-5'} />
+              <ArrowLeft className="w-5 h-5" />
               <span>뒤로</span>
             </motion.button>
 
             {/* Character Info */}
             <div className="flex items-center gap-3 flex-1 min-w-0">
               {/* Character Avatar */}
-              <div className={`relative ${
-                viewMode === 'mobile' ? 'w-10 h-10' : 'w-12 h-12'
-              } rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex-shrink-0 ring-2 ring-purple-200 dark:ring-purple-800`}>
+              <div className="relative w-12 h-12 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex-shrink-0 ring-2 ring-purple-200 dark:ring-purple-800">
                 {characterImage ? (
                   <ImageWithFallback
                     src={characterImage}
@@ -153,14 +143,10 @@ export function AIChat({
 
               {/* Name & Period */}
               <div className="flex-1 min-w-0">
-                <h2 className={`font-bold truncate ${
-                  viewMode === 'mobile' ? 'text-sm' : 'text-lg'
-                } ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                <h2 className={`font-bold truncate text-lg ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                   {character.name}
                 </h2>
-                <p className={`truncate ${
-                  viewMode === 'mobile' ? 'text-xs' : 'text-sm'
-                } ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                <p className={`truncate text-sm ${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
                   {character.period} • {character.role}
                 </p>
               </div>
@@ -169,9 +155,7 @@ export function AIChat({
         </header>
 
         {/* Messages Area */}
-        <div className={`flex-1 overflow-y-auto ${
-          viewMode === 'mobile' ? 'px-3 py-4' : 'px-6 py-6'
-        }`}>
+        <div className="flex-1 overflow-y-auto px-6 py-6">
           <AnimatePresence>
             {messages.map((message, index) => (
               <motion.div
@@ -185,14 +169,10 @@ export function AIChat({
               >
                 <div className={`flex ${
                   message.role === 'user' ? 'flex-row-reverse' : 'flex-row'
-                } items-end gap-2 ${
-                  viewMode === 'mobile' ? 'max-w-[85%]' : 'max-w-[75%]'
-                }`}>
+                } items-end gap-2 max-w-[75%]`}>
                   {/* Avatar for character messages */}
                   {message.role === 'assistant' && (
-                    <div className={`${
-                      viewMode === 'mobile' ? 'w-8 h-8' : 'w-10 h-10'
-                    } rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex-shrink-0 ring-2 ring-purple-100 dark:ring-purple-900`}>
+                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex-shrink-0 ring-2 ring-purple-100 dark:ring-purple-900">
                       {characterImage ? (
                         <ImageWithFallback
                           src={characterImage}
@@ -208,9 +188,7 @@ export function AIChat({
                   )}
 
                   {/* Message Bubble */}
-                  <div className={`${
-                    viewMode === 'mobile' ? 'px-3 py-2 rounded-2xl' : 'px-4 py-3 rounded-2xl'
-                  } ${
+                  <div className={`px-4 py-3 rounded-2xl ${
                     message.role === 'user'
                       ? `bg-gradient-to-br from-purple-600 to-pink-600 text-white shadow-lg ${
                           message.role === 'user' ? 'rounded-tr-sm' : ''
@@ -221,9 +199,7 @@ export function AIChat({
                             : 'bg-white text-gray-900 border border-gray-200'
                         } shadow-md ${message.role === 'assistant' ? 'rounded-tl-sm' : ''}`
                   }`}>
-                    <p className={`${
-                      viewMode === 'mobile' ? 'text-sm' : 'text-base'
-                    } leading-relaxed whitespace-pre-wrap break-words`}>
+                    <p className="text-base leading-relaxed whitespace-pre-wrap break-words">
                       {message.content}
                     </p>
                   </div>
@@ -240,9 +216,7 @@ export function AIChat({
               className="flex justify-start mb-4"
             >
               <div className="flex items-end gap-2">
-                <div className={`${
-                  viewMode === 'mobile' ? 'w-8 h-8' : 'w-10 h-10'
-                } rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex-shrink-0`}>
+                <div className="w-10 h-10 rounded-full overflow-hidden bg-gradient-to-br from-purple-400 to-pink-400 flex-shrink-0">
                   {characterImage ? (
                     <ImageWithFallback
                       src={characterImage}
@@ -255,9 +229,7 @@ export function AIChat({
                     </div>
                   )}
                 </div>
-                <div className={`${
-                  viewMode === 'mobile' ? 'px-4 py-3' : 'px-5 py-3'
-                } ${
+                <div className={`px-5 py-3 ${
                   darkMode ? 'bg-gray-800' : 'bg-white'
                 } rounded-2xl rounded-tl-sm shadow-md`}>
                   <div className="flex items-center gap-2">
@@ -278,9 +250,7 @@ export function AIChat({
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`mb-4 ${
-                viewMode === 'mobile' ? 'p-3' : 'p-4'
-              } rounded-xl ${
+              className={`mb-4 p-4 rounded-xl ${
                 darkMode ? 'bg-red-900/30 border border-red-800' : 'bg-red-50 border border-red-200'
               }`}
             >
@@ -303,9 +273,7 @@ export function AIChat({
         {/* Input Area */}
         <div className={`border-t ${
           darkMode ? 'bg-gray-900/95 border-gray-800' : 'bg-white/95 border-gray-200'
-        } backdrop-blur-xl ${
-          viewMode === 'mobile' ? 'p-3' : 'p-4'
-        }`}>
+        } backdrop-blur-xl p-4`}>
           <div className="flex gap-2">
             <input
               type="text"
@@ -314,9 +282,7 @@ export function AIChat({
               onKeyPress={handleKeyPress}
               placeholder={`${character.name}에게 질문해보세요...`}
               disabled={isLoading}
-              className={`flex-1 ${
-                viewMode === 'mobile' ? 'px-4 py-2.5 text-sm' : 'px-5 py-3 text-base'
-              } rounded-xl border-2 ${
+              className={`flex-1 px-5 py-3 text-base rounded-xl border-2 ${
                 darkMode 
                   ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-purple-500' 
                   : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-purple-500'
@@ -327,9 +293,7 @@ export function AIChat({
               whileTap={{ scale: 0.95 }}
               onClick={handleSend}
               disabled={!input.trim() || isLoading}
-              className={`${
-                viewMode === 'mobile' ? 'px-4 py-2.5' : 'px-6 py-3'
-              } rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0`}
+              className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0"
             >
               {isLoading ? (
                 <Loader2 className="w-5 h-5 animate-spin" />
@@ -340,9 +304,7 @@ export function AIChat({
           </div>
 
           {/* Helper Text */}
-          <p className={`text-center mt-2 ${
-            viewMode === 'mobile' ? 'text-xs' : 'text-xs'
-          } ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+          <p className={`text-center mt-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
             역사적 사실에 기반한 교육적인 대화를 나눠보세요 📚
           </p>
         </div>
