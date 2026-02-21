@@ -2,12 +2,12 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Crown, Castle, Book, Landmark, User, Clock, ArrowLeft, Sparkles, Lock, Check, Star } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import threeKingdomsImage from "figma:asset/6b4564927ec716928025b4c46f68af9df8be654f.png";
-import threeKingdomsPeriodImage from "figma:asset/3a7e2a63f6d253ca92d3db51250a099617d15e0b.png";
-import goryeoImage from "figma:asset/1105dce94caf890eb621c1b71be4414f9420e1f9.png";
-import joseonImage from "figma:asset/abe16d9bdd53420e54ce45952218625c1a5effb8.png";
-import modernImage from "figma:asset/c8395fb1e81b33dc6ddcedd243fec905c5b59ff9.png";
-import historicalChatImage from "figma:asset/7f6ad079cea18a9dd330a63f11e0997dd62dbb78.png";
+import threeKingdomsImage from "@/assets/6b4564927ec716928025b4c46f68af9df8be654f.png";
+import threeKingdomsPeriodImage from "@/assets/3a7e2a63f6d253ca92d3db51250a099617d15e0b.png";
+import goryeoImage from "@/assets/1105dce94caf890eb621c1b71be4414f9420e1f9.png";
+import joseonImage from "@/assets/abe16d9bdd53420e54ce45952218625c1a5effb8.png";
+import modernImage from "@/assets/c8395fb1e81b33dc6ddcedd243fec905c5b59ff9.png";
+import historicalChatImage from "@/assets/7f6ad079cea18a9dd330a63f11e0997dd62dbb78.png";
 
 interface PeriodSelectionProps {
   onSelectPeriod: (period: string) => void;

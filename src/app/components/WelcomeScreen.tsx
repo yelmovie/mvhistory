@@ -9,10 +9,10 @@ import { ViewModeToggle } from "./ViewModeToggle";
 import { useState, useRef } from "react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import type { UserProfile } from "../utils/supabaseClient";
-import goodsImage from "figma:asset/ad91fb6c6a4c819be7ad8de71de184cc8308eded.png";
-import museumImage from "figma:asset/b43467c9625f8cae55d080a380868b6690f988f2.png";
-import artifactImage from "figma:asset/d14bfe2bd2778a4895c55492daf17c122c9a6b38.png";
-import comicsImage from "figma:asset/2ae797fc976780ab3e9c34c87a23ed231e43f575.png";
+import goodsImage from "@/assets/ad91fb6c6a4c819be7ad8de71de184cc8308eded.png";
+import museumImage from "@/assets/b43467c9625f8cae55d080a380868b6690f988f2.png";
+import artifactImage from "@/assets/d14bfe2bd2778a4895c55492daf17c122c9a6b38.png";
+import comicsImage from "@/assets/2ae797fc976780ab3e9c34c87a23ed231e43f575.png";
 
 interface WelcomeScreenProps {
   onStart: () => void;

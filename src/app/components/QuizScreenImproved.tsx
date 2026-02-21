@@ -13,7 +13,7 @@ import { LevelIndicator } from "./gamification/LevelIndicator";
 import { ExpBar } from "./gamification/ExpBar";
 import { RewardAnimation } from "./gamification/RewardAnimation";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { generateQuizHint } from "../utils/openaiAPI";
+import { generateQuizHint } from "../utils/openaiApi";
 import { projectId, publicAnonKey } from "../../../utils/supabase/info";
 
 interface QuizScreenProps {

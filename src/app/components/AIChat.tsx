@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Send, ArrowLeft, Loader2, AlertCircle } from "lucide-react";
 import type { Character } from "../data/quizData";
-import { sendChatMessage, trimChatHistory } from "../utils/openaiAPI";
+import { sendChatMessage, trimChatHistory } from "../utils/openaiApi";
 import { getCachedImage } from "../utils/aiImageGenerator";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 

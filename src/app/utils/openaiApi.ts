@@ -167,6 +167,66 @@ export function getWelcomeMessage(characterName: string): string {
   return welcomeMessages[Math.floor(Math.random() * welcomeMessages.length)];
 }
 
+// 채팅 메시지 전송 (캐릭터 대화용)
+export async function sendChatMessage(
+  characterName: string,
+  period: string,
+  userMessage: string,
+  history: ChatMessage[],
+  apiKey: string
+): Promise<string> {
+  const messages: ChatMessage[] = [
+    {
+      role: 'system',
+      content: createHistoricalCharacterPrompt(characterName, period)
+    },
+    ...history,
+    { role: 'user', content: userMessage }
+  ];
+
+  return chatWithOpenAI(messages, apiKey);
+}
+
+// 대화 기록 트림 (최근 N개 유지)
+export function trimChatHistory(history: ChatMessage[], maxLength: number = 10): ChatMessage[] {
+  if (history.length <= maxLength) return history;
+  return history.slice(history.length - maxLength);
+}
+
+// 퀴즈 힌트 생성
+export async function generateQuizHint(
+  question: string,
+  answer: string,
+  hintIndex: number,
+  apiKey?: string
+): Promise<string> {
+  const hints = [
+    `이 문제의 첫 번째 힌트: 답의 첫 글자는 "${answer[0]}"입니다.`,
+    `두 번째 힌트: 답은 총 ${answer.length}글자입니다.`,
+    `세 번째 힌트: "${answer}" - 정답을 공개합니다!`
+  ];
+  
+  if (!apiKey) {
+    return hints[Math.min(hintIndex, hints.length - 1)];
+  }
+
+  try {
+    const messages: ChatMessage[] = [
+      {
+        role: 'system',
+        content: '당신은 초등학생에게 한국사 퀴즈 힌트를 제공하는 선생님입니다. 정답을 직접 말하지 않고 힌트를 주세요.'
+      },
+      {
+        role: 'user',
+        content: `문제: "${question}"\n정답: "${answer}"\n${hintIndex + 1}번째 힌트를 2문장 이내로 알려주세요.`
+      }
+    ];
+    return await chatWithOpenAI(messages, apiKey);
+  } catch {
+    return hints[Math.min(hintIndex, hints.length - 1)];
+  }
+}
+
 // 대화 컨텍스트 관리
 export class ConversationManager {
   private messages: ChatMessage[] = [];
