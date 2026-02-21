@@ -1,0 +1,492 @@
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  /* 🎨 Brand Color Palette - 초등학생용 디자인 시스템 */
+  --font-size: 16px;
+  
+  /* Primary Colors */
+  --primary: #6366F1;
+  --primary-foreground: #FFFFFF;
+  --primary-hover: #4F46E5;
+  --primary-light: #A5B4FC;
+  
+  /* Secondary Colors */
+  --secondary: #F59E0B;
+  --secondary-foreground: #FFFFFF;
+  --secondary-hover: #D97706;
+  --secondary-light: #FCD34D;
+  
+  /* Accent Colors */
+  --accent: #EC4899;
+  --accent-foreground: #FFFFFF;
+  --accent-hover: #DB2777;
+  --accent-light: #F9A8D4;
+  
+  /* Semantic Colors */
+  --success: #10B981;
+  --success-foreground: #FFFFFF;
+  --success-light: #6EE7B7;
+  --success-bg: #D1FAE5;
+  
+  --error: #EF4444;
+  --error-foreground: #FFFFFF;
+  --error-light: #FCA5A5;
+  --error-bg: #FEE2E2;
+  
+  --warning: #FBBF24;
+  --warning-foreground: #92400E;
+  --warning-light: #FDE68A;
+  --warning-bg: #FEF3C7;
+  
+  /* Background & Surface */
+  --background: #FEF7FF;
+  --foreground: #1F2937;
+  --surface: #FFFFFF;
+  --card: #FFFFFF;
+  --card-foreground: #1F2937;
+  
+  /* Text Colors */
+  --text-primary: #1F2937;
+  --text-secondary: #6B7280;
+  --text-tertiary: #9CA3AF;
+  
+  /* Border & Divider */
+  --border: #E5E7EB;
+  --divider: #F3F4F6;
+  --input-border: #D1D5DB;
+  
+  /* 🎯 시대별 파스텔 컬러 (기존 유지 + 조정) */
+  --period-prehistoric: #FFD6A5;
+  --period-prehistoric-light: #FFE8CC;
+  
+  --period-gojoseon: #CAFFBF;
+  --period-gojoseon-light: #E3FFE0;
+  
+  --period-threekingdoms: #A0C4FF;
+  --period-threekingdoms-light: #BFD7FF;
+  
+  --period-unified: #BDB2FF;
+  --period-unified-light: #D4CDFF;
+  
+  --period-goryeo: #FFC6FF;
+  --period-goryeo-light: #FFD9FF;
+  
+  --period-joseon-early: #9BF6FF;
+  --period-joseon-early-light: #C5F9FF;
+  
+  --period-joseon-late: #A7F3D0;
+  --period-joseon-late-light: #C9F7E0;
+  
+  --period-modern: #FDE68A;
+  --period-modern-light: #FEF3C7;
+
+  /* 🏆 게이미피케이션 컬러 */
+  --gamify-gold: #F59E0B;
+  --gamify-silver: #94A3B8;
+  --gamify-bronze: #F97316;
+  --gamify-exp-start: #6366F1;
+  --gamify-exp-end: #EC4899;
+  --gamify-success: #10B981;
+  --gamify-error: #EF4444;
+  --gamify-warning: #FBBF24;
+  --gamify-info: #6366F1;
+
+  /* 📏 Border Radius System */
+  --radius-xs: 8px;
+  --radius-sm: 12px;
+  --radius-md: 16px;
+  --radius-lg: 20px;
+  --radius-xl: 24px;
+  --radius-2xl: 32px;
+  --radius-full: 9999px;
+
+  /* 🌟 Shadow System */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.12);
+  --shadow-xl: 0 12px 40px rgba(0, 0, 0, 0.15);
+  --shadow-2xl: 0 20px 60px rgba(0, 0, 0, 0.20);
+  --shadow-inner: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+  
+  /* Colored Shadows */
+  --shadow-primary: 0 8px 24px rgba(99, 102, 241, 0.25);
+  --shadow-secondary: 0 8px 24px rgba(245, 158, 11, 0.25);
+  --shadow-accent: 0 8px 24px rgba(236, 72, 153, 0.25);
+  --shadow-success: 0 8px 24px rgba(16, 185, 129, 0.25);
+
+  /* 🎭 Transition & Animation */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 350ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 500ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+
+  /* 📊 Chart Colors */
+  --chart-1: #6366F1;
+  --chart-2: #8B5CF6;
+  --chart-3: #EC4899;
+  --chart-4: #F59E0B;
+  --chart-5: #10B981;
+
+  /* Other Variables */
+  --popover: #FFFFFF;
+  --popover-foreground: #1F2937;
+  --muted: #F3F4F6;
+  --muted-foreground: #6B7280;
+  --destructive: #EF4444;
+  --destructive-foreground: #FFFFFF;
+  --input: transparent;
+  --input-background: #F9FAFB;
+  --switch-background: #D1D5DB;
+  --font-weight-medium: 600;
+  --font-weight-normal: 400;
+  --ring: #6366F1;
+
+  /* Sidebar */
+  --sidebar: #FFFFFF;
+  --sidebar-foreground: #1F2937;
+  --sidebar-primary: #6366F1;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #F3F4F6;
+  --sidebar-accent-foreground: #1F2937;
+  --sidebar-border: #E5E7EB;
+  --sidebar-ring: #6366F1;
+}
+
+.dark {
+  --background: #0F172A;
+  --foreground: #F8FAFC;
+  --surface: #1E293B;
+  --card: #1E293B;
+  --card-foreground: #F8FAFC;
+  --text-primary: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --text-tertiary: #94A3B8;
+  
+  --border: #334155;
+  --divider: #1E293B;
+  --input-border: #475569;
+  
+  --primary: #818CF8;
+  --primary-hover: #6366F1;
+  --secondary: #FBBF24;
+  --secondary-hover: #F59E0B;
+  --accent: #F472B6;
+  --accent-hover: #EC4899;
+  
+  --success-bg: #064E3B;
+  --error-bg: #7F1D1D;
+  --warning-bg: #78350F;
+  
+  /* Dark mode shadows */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.5);
+  --shadow-xl: 0 12px 40px rgba(0, 0, 0, 0.6);
+  --shadow-2xl: 0 20px 60px rgba(0, 0, 0, 0.7);
+  
+  --shadow-primary: 0 8px 24px rgba(129, 140, 248, 0.35);
+  --shadow-secondary: 0 8px 24px rgba(251, 191, 36, 0.35);
+  --shadow-accent: 0 8px 24px rgba(244, 114, 182, 0.35);
+
+  --popover: #1E293B;
+  --popover-foreground: #F8FAFC;
+  --muted: #334155;
+  --muted-foreground: #94A3B8;
+  --input-background: #334155;
+  --switch-background: #475569;
+
+  /* Sidebar dark */
+  --sidebar: #1E293B;
+  --sidebar-foreground: #F8FAFC;
+  --sidebar-primary: #818CF8;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #334155;
+  --sidebar-accent-foreground: #F8FAFC;
+  --sidebar-border: #334155;
+  --sidebar-ring: #818CF8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-input-background: var(--input-background);
+  --color-switch-background: var(--switch-background);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* 📝 Typography System - 초등학생 가독성 최적화 */
+  html {
+    font-size: var(--font-size);
+  }
+
+  h1 {
+    font-size: 2.5rem; /* 40px */
+    font-weight: 700;
+    line-height: 1.6;
+    letter-spacing: -0.02em;
+  }
+
+  h2 {
+    font-size: 2rem; /* 32px */
+    font-weight: 700;
+    line-height: 1.6;
+    letter-spacing: -0.015em;
+  }
+
+  h3 {
+    font-size: 1.75rem; /* 28px */
+    font-weight: 600;
+    line-height: 1.6;
+  }
+
+  h4 {
+    font-size: 1.5rem; /* 24px */
+    font-weight: 600;
+    line-height: 1.6;
+  }
+
+  label {
+    font-size: 1rem; /* 16px */
+    font-weight: 600;
+    line-height: 1.6;
+  }
+
+  button {
+    font-size: 1.125rem; /* 18px */
+    font-weight: 600;
+    line-height: 1.6;
+    transition: all var(--transition-base);
+  }
+
+  input, textarea {
+    font-size: 1.125rem; /* 18px */
+    font-weight: 500;
+    line-height: 1.6;
+  }
+
+  p {
+    font-size: 1.125rem; /* 18px */
+    font-weight: 500;
+    line-height: 1.6;
+  }
+
+  .text-caption {
+    font-size: 0.875rem; /* 14px */
+    font-weight: 400;
+    line-height: 1.6;
+  }
+
+  /* Scrollbar Styling */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* 3D Card Flip Perspective */
+  .perspective-1000 {
+    perspective: 1000px;
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 9999px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.3);
+  }
+
+  /* 🎨 Utility Classes */
+  .glass-effect {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  .dark .glass-effect {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .card-float {
+    box-shadow: var(--shadow-md);
+    transition: all var(--transition-base);
+  }
+
+  .card-float:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+  }
+
+  /* Gradient Utilities */
+  .gradient-primary {
+    background: linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%);
+  }
+
+  .gradient-secondary {
+    background: linear-gradient(135deg, #F59E0B 0%, #F97316 100%);
+  }
+
+  .gradient-accent {
+    background: linear-gradient(135deg, #EC4899 0%, #F472B6 100%);
+  }
+
+  .gradient-success {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  }
+
+  .gradient-error {
+    background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+  }
+
+  /* 🎯 Animation Keyframes */
+  @keyframes bounce-gentle {
+    0%, 100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% {
+      box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);
+    }
+    50% {
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.6);
+    }
+  }
+
+  @keyframes float {
+    0%, 100% {
+      transform: translateY(0px);
+    }
+    50% {
+      transform: translateY(-10px);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -1000px 0;
+    }
+    100% {
+      background-position: 1000px 0;
+    }
+  }
+
+  @keyframes slide-in-right {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slide-in-left {
+    from {
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes scale-in {
+    from {
+      opacity: 0;
+      transform: scale(0.9);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .animate-bounce-gentle {
+    animation: bounce-gentle 2s ease-in-out infinite;
+  }
+
+  .animate-pulse-glow {
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out;
+  }
+
+  .animate-slide-in-left {
+    animation: slide-in-left 0.3s ease-out;
+  }
+
+  .animate-scale-in {
+    animation: scale-in 0.3s ease-out;
+  }
+}
