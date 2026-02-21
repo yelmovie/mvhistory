@@ -67,8 +67,9 @@ export function LoginModal({ isOpen, onClose, onLogin, darkMode }: LoginModalPro
 
     // 세션 저장
     localStorage.setItem("currentUser", JSON.stringify({ name: displayName, email }));
-    onLogin(displayName);
+    // 모달을 먼저 닫은 후 로그인 콜백 호출 (상태 전환 순서 보장)
     handleClose();
+    onLogin(displayName);
   };
 
   const handleClose = () => {

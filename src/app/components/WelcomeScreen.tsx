@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { ViewModeIndicator } from "./ViewModeIndicator";
 import { ViewModeToggle } from "./ViewModeToggle";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import type { UserProfile } from "../utils/supabaseClient";
 import goodsImage from "@/assets/ad91fb6c6a4c819be7ad8de71de184cc8308eded.png";
@@ -30,6 +30,10 @@ interface WelcomeScreenProps {
   onViewModeChange?: (mode: 'desktop' | 'tablet' | 'mobile') => void;
   userProfile?: UserProfile | null;
   isLoadingProfile?: boolean;
+  /** 로그인 후 학습 시작을 자동 실행해야 하는지 여부 */
+  pendingStart?: boolean;
+  /** pendingStart 소비 후 초기화 콜백 */
+  onClearPendingStart?: () => void;
 }
 
 export function WelcomeScreen({ 
@@ -45,9 +49,28 @@ export function WelcomeScreen({
   viewMode = 'desktop',
   onViewModeChange,
   userProfile,
-  isLoadingProfile = false
+  isLoadingProfile = false,
+  pendingStart = false,
+  onClearPendingStart
 }: WelcomeScreenProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // 로그인 완료 후 pendingStart가 있으면 자동으로 학습 시작
+  useEffect(() => {
+    if (pendingStart && currentUser) {
+      onClearPendingStart?.();
+      onStart();
+    }
+  }, [pendingStart, currentUser]);
+
+  // 학습 시작 버튼 핸들러: 비로그인이면 로그인 모달 먼저 오픈
+  const handleStartLearning = () => {
+    if (!currentUser) {
+      onOpenLogin?.();
+    } else {
+      onStart();
+    }
+  };
 
   // Use real data from Supabase or fallback to mock data
   const userStats = userProfile ? {
@@ -462,7 +485,7 @@ export function WelcomeScreen({
               <motion.button
                 whileHover={{ scale: 1.05, y: -2 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={onStart}
+                onClick={handleStartLearning}
                 className={`group relative inline-flex items-center gap-3 font-bold rounded-[20px] text-white overflow-hidden ${
                   viewMode === 'mobile' ? 'px-8 py-4 text-base' : 'px-12 py-6 text-xl'
                 }`}
@@ -473,12 +496,30 @@ export function WelcomeScreen({
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-[#D97706] via-[#DB2777] to-[#4F46E5] opacity-0 group-hover:opacity-100 transition-opacity" />
                 <span className="relative flex items-center gap-3">
-                  학습 시작하기
-                  <ArrowRight className={`${
-                    viewMode === 'mobile' ? 'w-5 h-5' : 'w-6 h-6'
-                  } group-hover:translate-x-1 transition-transform`} strokeWidth={2} />
+                  {currentUser ? '학습 시작하기' : '로그인 후 시작하기'}
+                  {currentUser ? (
+                    <ArrowRight className={`${
+                      viewMode === 'mobile' ? 'w-5 h-5' : 'w-6 h-6'
+                    } group-hover:translate-x-1 transition-transform`} strokeWidth={2} />
+                  ) : (
+                    <LogIn className={`${
+                      viewMode === 'mobile' ? 'w-5 h-5' : 'w-6 h-6'
+                    }`} strokeWidth={2} />
+                  )}
                 </span>
               </motion.button>
+
+              {/* 비로그인 안내 문구 */}
+              {!currentUser && (
+                <motion.p
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.4 }}
+                  className={`mt-3 text-sm ${darkMode ? 'text-[#94A3B8]' : 'text-[#9CA3AF]'}`}
+                >
+                  로그인하면 학습 기록과 인물 카드가 저장됩니다 ✨
+                </motion.p>
+              )}
 
               {/* Floating Emojis */}
               {viewMode !== 'mobile' && (
@@ -520,7 +561,7 @@ export function WelcomeScreen({
             }`}>
               {/* Step 1: Quiz */}
               <motion.button
-                onClick={onStart}
+                onClick={handleStartLearning}
                 whileHover={{ y: -6, scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
                 className={`group relative overflow-hidden rounded-[24px] transition-all border ${

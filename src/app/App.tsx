@@ -74,6 +74,8 @@ export default function App() {
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [completedQuestions, setCompletedQuestions] = useState<number[]>([]);
+  // 로그인 후 학습 시작을 자동 실행하기 위한 플래그
+  const [pendingStart, setPendingStart] = useState(false);
 
   // Initialize user session with Supabase
   useEffect(() => {
@@ -381,6 +383,9 @@ export default function App() {
       } catch (error) {
         console.error("Failed to sync user profile:", error);
       }
+
+      // 로그인 모달이 학습 시작 버튼에 의해 열렸다면 바로 시작
+      setPendingStart(true);
     }
   };
 
@@ -429,6 +434,8 @@ export default function App() {
               onViewModeChange={setViewMode}
               userProfile={userProfile}
               isLoadingProfile={isLoadingProfile}
+              pendingStart={pendingStart}
+              onClearPendingStart={() => setPendingStart(false)}
             />
             <LoginModal
               isOpen={isLoginModalOpen}
