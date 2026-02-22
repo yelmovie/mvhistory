@@ -21,7 +21,7 @@ const app = new Hono();
 // ---------------------------------------------------------------------------
 // Config from environment (Edge Function Secrets)
 // ---------------------------------------------------------------------------
-const STORAGE_BUCKET = Deno.env.get("SUPABASE_STORAGE_BUCKET") ?? "quiz-images";
+const STORAGE_BUCKET = Deno.env.get("STORAGE_BUCKET") ?? "quiz-images";
 const MAX_RETRIES = parseInt(Deno.env.get("IMAGE_MAX_RETRIES") ?? "2", 10);
 const RATE_LIMIT_PER_MIN = parseInt(Deno.env.get("IMAGE_RATE_LIMIT_PER_MIN") ?? "30", 10);
 const OPENAI_API_KEY = () => Deno.env.get("OPENAI_API_KEY") ?? "";
@@ -629,11 +629,11 @@ app.post("/make-server-48be01a5/generate-character-image", async (c) => {
 // Google Custom Search API를 사용하여 퀴즈/인물 이미지를 검색합니다.
 // 필요한 환경변수: GOOGLE_API_KEY, GOOGLE_CX
 async function searchGoogleImage(query: string): Promise<string | null> {
-  const apiKey = Deno.env.get('GOOGLE_API_KEY');
-  const cx = Deno.env.get('GOOGLE_CX');
+  const apiKey = Deno.env.get('GOOGLE_SEARCH_API_KEY') ?? Deno.env.get('GOOGLE_API_KEY');
+  const cx = Deno.env.get('GOOGLE_SEARCH_ENGINE_ID') ?? Deno.env.get('GOOGLE_CX');
 
   if (!apiKey || !cx) {
-    console.warn('GOOGLE_API_KEY or GOOGLE_CX not configured');
+    console.warn('GOOGLE_SEARCH_API_KEY or GOOGLE_SEARCH_ENGINE_ID not configured');
     return null;
   }
 
