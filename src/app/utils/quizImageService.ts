@@ -241,22 +241,43 @@ export async function getQuizImage(
 
 /**
  * Convenience wrapper that accepts a raw quiz item object and derives
- * era/topic/keywords automatically from category and question text.
+ * era/topic/keywords automatically from category, question text, and answer.
  */
 export async function getQuizImageFromItem(item: {
   id: number | string;
   question: string;
+  answer?: string;
   category?: string;
   imagePrompt?: string;
 }): Promise<QuizImageResult> {
   const eraInfo = categoryToEraInfo(item.category);
-  const keywords = extractKeywordsFromText(item.question, item.category);
+
+  // Build keywords from BOTH question text AND answer (answer is the most specific signal)
+  const keywordsFromQuestion = extractKeywordsFromText(item.question, item.category);
+
+  // Always include the answer itself as a keyword if it's a meaningful historical term
+  const answerKeywords: string[] = [];
+  if (item.answer && item.answer.length > 0) {
+    answerKeywords.push(item.answer);
+    // Also search for the answer in our keyword map
+    const answerFromMap = extractKeywordsFromText(item.answer, item.category);
+    answerKeywords.push(...answerFromMap);
+  }
+
+  // Merge: answer keywords first (most specific), then question keywords
+  const allKeywords = [...new Set([...answerKeywords, ...keywordsFromQuestion])].slice(0, 5);
+  const finalKeywords = allKeywords.length > 0 ? allKeywords : [item.category ?? "한국역사"];
+
+  // Build a topic string that includes the answer
+  const topic = item.answer
+    ? `${item.answer} — ${eraInfo.topic}`
+    : eraInfo.topic;
 
   return getQuizImage({
     quizItemId: item.id,
     era: eraInfo.era,
-    topic: eraInfo.topic,
-    keywords: keywords.length > 0 ? keywords : [item.category ?? "한국역사"],
+    topic,
+    keywords: finalKeywords,
     styleHints: item.imagePrompt,
   });
 }

@@ -101,12 +101,68 @@ function getEraContext(era: string): EraContext {
 // Prompt builder
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Korean historical subject → English description map
+// ---------------------------------------------------------------------------
+const SUBJECT_EN: Record<string, string> = {
+  "동명성왕": "King Dongmyeonseong (Jumong), the founder of Goguryeo, a heroic Korean warrior-king in ancient armor",
+  "주몽": "Jumong (King Dongmyeonseong), the legendary founder of Goguryeo kingdom, wearing ancient Korean warrior armor",
+  "광개토대왕": "King Gwanggaeto the Great of Goguryeo, a powerful Korean king in royal armor surrounded by maps",
+  "장수왕": "King Jangsu of Goguryeo in a royal court setting",
+  "을지문덕": "General Eulji Mundeok of Goguryeo, a military commander in ancient Korean armor",
+  "무용총": "ancient Goguryeo tomb mural showing people dancing, painted on stone walls",
+  "근초고왕": "King Geunchogo of Baekje in a royal court",
+  "성왕": "King Seong of Baekje in a Buddhist temple setting",
+  "의자왕": "King Uija of Baekje at Baengmagang River",
+  "박혁거세": "Park Hyeokgeose, the legendary founder of Silla kingdom",
+  "진흥왕": "King Jinheung of Silla in a royal court with stone monuments",
+  "선덕여왕": "Queen Seondeok of Silla, Korea's first female ruler, near Cheomseongdae observatory",
+  "김유신": "General Kim Yu-sin of Silla in military armor",
+  "계백": "General Gyebaek of Baekje in armor at a decisive battle",
+  "단군왕검": "Dangun, the legendary founder of Gojoseon, in an ancient Korean mountain setting with dolmens",
+  "세종대왕": "King Sejong the Great of Joseon studying Hunminjeongeum (Korean alphabet) scrolls",
+  "이순신": "Admiral Yi Sun-sin of Joseon aboard a turtle ship (Geobukseon) in naval battle",
+  "신사임당": "Shin Saimdang, Joseon artist and scholar, painting nature scenes",
+  "유관순": "Yu Gwan-sun, Korean independence activist, holding a Korean flag",
+  "안중근": "An Jung-geun, Korean independence activist in early 20th century setting",
+  "정약용": "Jeong Yak-yong (Dasan), Joseon scholar and inventor, studying at a writing desk",
+  "불국사": "Bulguksa Temple in Silla period, UNESCO heritage stone pagodas and wooden halls",
+  "석굴암": "Seokguram Grotto, a magnificent stone Buddhist statue inside a granite cave",
+  "첨성대": "Cheomseongdae observatory tower in Silla capital Gyeongju",
+  "훈민정음": "the creation of Hunminjeongeum (the Korean alphabet) with scholars writing on paper scrolls",
+  "한글": "Hangeul Korean alphabet characters being written with ink brushes on hanji paper",
+  "거북선": "the Geobukseon (turtle ship), the iron-clad warship of Admiral Yi Sun-sin",
+  "경복궁": "Gyeongbokgung Palace in Joseon dynasty, grand wooden architecture with curved roofs",
+  "팔만대장경": "the Tripitaka Koreana (Palman Daejanggyeong), thousands of wooden printing blocks at Haeinsa Temple",
+  "고려청자": "Goryeo celadon pottery with jade-green glaze and crane inlay designs",
+  "조선백자": "Joseon white porcelain (baekja) with clean minimalist design on a wooden shelf",
+  "금속활자": "Goryeo metal movable type printing blocks, the world's first metal type printing",
+  "직지심체요절": "Jikji, the world's oldest metal-printed book, in Goryeo period monastic setting",
+  "측우기": "Cheugugi (rain gauge), a Joseon scientific instrument for measuring rainfall",
+  "앙부일구": "Angbuilgu (hemispherical sundial), a Joseon astronomical instrument in a palace courtyard",
+  "살수대첩": "Battle of Salsu, Goguryeo general Eulji Mundeok defeating Sui dynasty army at a river",
+  "3.1운동": "the March 1st Movement, Korean people waving white flags for independence in 1919",
+  "임진왜란": "the Imjin War (Japanese invasion of 1592), Joseon defenders and turtle ships at sea",
+  "병자호란": "the Manchu invasion of 1636, Joseon soldiers defending Namhansanseong fortress",
+};
+
+function getSubjectDescription(keywords: string[]): string {
+  for (const kw of keywords) {
+    if (SUBJECT_EN[kw]) return SUBJECT_EN[kw];
+    // partial match
+    for (const [kr, desc] of Object.entries(SUBJECT_EN)) {
+      if (kw.includes(kr) || kr.includes(kw)) return desc;
+    }
+  }
+  return "";
+}
+
 /**
  * Build a strict, era-grounded image generation prompt.
  *
  * @param era        Korean historical era, e.g. "조선시대".
- * @param topic      Specific topic within the era, e.g. "훈민정음 창제".
- * @param keywords   Key subjects to depict, e.g. ["세종대왕", "한글"].
+ * @param topic      Specific topic within the era, e.g. "동명성왕 — 삼국시대".
+ * @param keywords   Key subjects to depict, e.g. ["동명성왕", "고구려"].
  * @param styleHints Optional extra style guidance. Must not override era constraints.
  * @returns          A detailed English prompt for OpenAI image generation.
  */
@@ -117,48 +173,51 @@ export function buildQuizImagePrompt(
   styleHints?: string,
 ): string {
   const ctx = getEraContext(era);
+
+  // Try to get a very specific English description for the main subject
+  const subjectDesc = getSubjectDescription(keywords);
   const subjectList = keywords.slice(0, 3).join(", ");
 
+  // Primary subject line — use the specific English description if available
+  const primarySubject = subjectDesc
+    ? subjectDesc
+    : `${subjectList || topic} in Korean history`;
+
   // styleHints are merged only if they don't conflict with era constraints.
-  // We strip any warm/yellow-tone bias from styleHints.
   const safeStyleHints = styleHints
-    ? styleHints
-        .replace(/warm|yellow|golden\s*hour|sepia/gi, "")
-        .trim()
+    ? styleHints.replace(/warm|yellow|golden\s*hour|sepia/gi, "").trim()
     : "";
 
-  const styleSection = safeStyleHints
-    ? `Additional style: ${safeStyleHints}.`
-    : "";
+  const styleSection = safeStyleHints ? `Additional style: ${safeStyleHints}.` : "";
 
   const prompt = [
-    // Subject
-    `Educational illustration of ${subjectList || topic} in ${era} Korean history.`,
+    // Primary subject — most important line
+    `Educational illustration of ${primarySubject}.`,
+
+    // Era grounding
+    `Historical period: ${era} Korean history.`,
 
     // Background / environment
     `Scene: ${ctx.environment}.`,
 
     // Era-appropriate props
-    `Show historically accurate props: ${ctx.props}.`,
-
-    // Topic context
-    `The image must depict: ${topic}.`,
+    `Show historically accurate Korean props: ${ctx.props}.`,
 
     // Style requirements
     `Style: clean educational illustration, detailed, high contrast, flat perspective, no text, no letters, no watermarks, no logos, no captions.`,
 
     // Palette
-    `Color palette: ${ctx.palette}; cool to neutral tones, no warm or yellow bias.`,
+    `Color palette: ${ctx.palette}; cool to neutral tones.`,
 
     styleSection,
 
-    // Negative constraints (comprehensive)
+    // Hard negative constraints
     `STRICTLY EXCLUDE: ${ctx.forbiddenLandmarks}.`,
-    `STRICTLY EXCLUDE: Southeast Asian temples, Chinese architecture, Japanese architecture unless explicitly part of topic.`,
-    `STRICTLY EXCLUDE: any written text, letters, numbers, watermarks, logos, captions, speech bubbles.`,
-    `STRICTLY EXCLUDE: modern elements (cars, electricity poles, smartphones, computers, contemporary clothing).`,
-    `STRICTLY EXCLUDE: non-Korean flags or national symbols unless historically directly relevant.`,
-    `The image must be historically plausible for ${era} Korea only.`,
+    `STRICTLY EXCLUDE: Southeast Asian temples (Angkor Wat, Borobudur, Prambanan), Hindu temples, Chinese architecture, Japanese architecture.`,
+    `STRICTLY EXCLUDE: Indian subcontinent, Indonesia, Thailand, Cambodia architecture or landscapes.`,
+    `STRICTLY EXCLUDE: any written text, letters, numbers, watermarks, logos, captions.`,
+    `STRICTLY EXCLUDE: modern elements (cars, electricity poles, smartphones, contemporary clothing).`,
+    `This image must depict KOREAN history ONLY. If uncertain, show a traditional Korean palace, Korean warrior, or Korean artifact.`,
   ]
     .filter(Boolean)
     .join(" ");

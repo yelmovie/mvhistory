@@ -199,6 +199,7 @@ export function QuizScreen({
         const result = await getQuizImageFromItem({
           id: question.id,
           question: question.question,
+          answer: question.answer,
           category: question.category,
           imagePrompt: (question as any).imagePrompt,
         });
