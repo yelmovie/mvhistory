@@ -13,7 +13,10 @@ const SUPABASE_URL =
   import.meta.env.VITE_SUPABASE_URL ?? "https://ngvsfcekfzzykvcsjktp.supabase.co";
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 
-const EDGE_BASE = `${SUPABASE_URL}/functions/v1/make-server-48be01a5`;
+// Edge Function base: just the functions/v1 root.
+// The deployed function name "make-server-48be01a5" is the Hono prefix inside the function,
+// so the full route is /functions/v1/make-server-48be01a5/<path>.
+const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`;
 
 // ---------------------------------------------------------------------------
 // Fallback images by category (used when Edge Function is unreachable)
@@ -164,8 +167,15 @@ export interface QuizImageResult {
 export async function getQuizImage(
   req: QuizImageRequest,
 ): Promise<QuizImageResult> {
+  // Full URL: /functions/v1/make-server-48be01a5/quiz-image/generate
+  const url = `${FUNCTIONS_BASE}/make-server-48be01a5/quiz-image/generate`;
+
+  // #region agent log
+  fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'quizImageService.ts:getQuizImage',message:'fetch start',data:{url,era:req.era,topic:req.topic,keywords:req.keywords},timestamp:Date.now(),hypothesisId:'A',runId:'debug-1'})}).catch(()=>{});
+  // #endregion
+
   try {
-    const res = await fetch(`${EDGE_BASE}/quiz-image/generate`, {
+    const res = await fetch(url, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${ANON_KEY}`,
@@ -178,19 +188,34 @@ export async function getQuizImage(
         keywords: req.keywords,
         styleHints: req.styleHints,
       }),
-      signal: AbortSignal.timeout(20_000), // 20 s timeout
+      signal: AbortSignal.timeout(30_000), // 30s — image generation can be slow
     });
 
+    // Rate limit
     if (res.status === 429) {
       console.warn("Quiz image rate limit hit, using fallback");
-      return {
-        publicUrl: DEFAULT_FALLBACK,
-        status: "fallback",
-        source: "rate-limited",
-      };
+      return { publicUrl: DEFAULT_FALLBACK, status: "fallback", source: "rate-limited" };
     }
 
-    const data = await res.json();
+    // Always read as text first to avoid JSON parse crash on HTML error pages
+    const text = await res.text();
+    const contentType = res.headers.get("content-type") ?? "";
+
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'quizImageService.ts:response',message:'got response',data:{status:res.status,contentType,bodyPreview:text.slice(0,300)},timestamp:Date.now(),hypothesisId:'B',runId:'debug-1'})}).catch(()=>{});
+    // #endregion
+
+    if (!res.ok) {
+      console.error(`getQuizImage HTTP ${res.status}:`, text.slice(0, 300));
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
+    }
+
+    if (!contentType.includes("application/json")) {
+      console.error("getQuizImage: non-JSON response:", text.slice(0, 300));
+      throw new Error(`Non-JSON response (${contentType}): ${text.slice(0, 100)}`);
+    }
+
+    const data = JSON.parse(text);
 
     if (data.publicUrl) {
       return {
@@ -203,12 +228,11 @@ export async function getQuizImage(
 
     throw new Error(data.error ?? "No publicUrl in response");
   } catch (err) {
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'quizImageService.ts:catch',message:'error caught',data:{error:String(err)},timestamp:Date.now(),hypothesisId:'C',runId:'debug-1'})}).catch(()=>{});
+    // #endregion
     console.error("getQuizImage failed:", err);
-    return {
-      publicUrl: DEFAULT_FALLBACK,
-      status: "fallback",
-      source: "error",
-    };
+    return { publicUrl: DEFAULT_FALLBACK, status: "fallback", source: "error" };
   }
 }
 
