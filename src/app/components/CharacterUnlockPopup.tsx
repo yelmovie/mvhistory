@@ -1,253 +1,375 @@
 import { motion, AnimatePresence } from "motion/react";
-import { X, Star, Sparkles, Loader2 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { X, Star, Sparkles, Trophy, MessageCircle } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
 import type { Character } from "../data/quizData";
-import { getOrGenerateCharacterImage, getCachedImage } from "../utils/aiImageGenerator";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { resolveCharacterImage, getCharacterImageCandidates } from "../utils/characterImageMap";
 
+// ── 시대별 색상 ──────────────────────────────────────────────────
+const PERIOD_COLOR: Record<string, { gradient: string; color: string }> = {
+  고조선: { gradient: "linear-gradient(135deg,#92400E,#D97706)", color: "#D97706" },
+  삼국시대: { gradient: "linear-gradient(135deg,#059669,#10B981)", color: "#10B981" },
+  고려: { gradient: "linear-gradient(135deg,#0891B2,#06B6D4)", color: "#06B6D4" },
+  조선: { gradient: "linear-gradient(135deg,#DC2626,#F59E0B)", color: "#EF4444" },
+  근현대: { gradient: "linear-gradient(135deg,#1E40AF,#6366F1)", color: "#6366F1" },
+};
+
+function getPeriodStyle(period: string) {
+  for (const [key, val] of Object.entries(PERIOD_COLOR)) {
+    if (period.includes(key)) return val;
+  }
+  return { gradient: "linear-gradient(135deg,#7C3AED,#DB2777)", color: "#7C3AED" };
+}
+
+// ── 콘페티 파티클 ─────────────────────────────────────────────────
+const CONFETTI_COLORS = ["#F59E0B","#EF4444","#10B981","#3B82F6","#8B5CF6","#EC4899","#06B6D4","#FBBF24"];
+
+function ConfettiParticle({ delay, color }: { delay: number; color: string }) {
+  const x = (Math.random() - 0.5) * 400;
+  const rotation = Math.random() * 720 - 360;
+  const size = Math.random() * 8 + 6;
+  const shape = Math.random() > 0.5 ? "50%" : "2px";
+  return (
+    <motion.div
+      className="absolute pointer-events-none"
+      style={{
+        width: size,
+        height: size,
+        backgroundColor: color,
+        borderRadius: shape,
+        top: "30%",
+        left: "50%",
+      }}
+      initial={{ opacity: 1, x: 0, y: 0, rotate: 0, scale: 1 }}
+      animate={{
+        opacity: [1, 1, 0],
+        x,
+        y: [0, -120, 300],
+        rotate: rotation,
+        scale: [1, 1.2, 0.8],
+      }}
+      transition={{
+        duration: 2.2,
+        delay,
+        ease: [0.25, 0.46, 0.45, 0.94],
+      }}
+    />
+  );
+}
+
+// ── 별 파티클 ─────────────────────────────────────────────────────
+function StarBurst({ count = 16 }: { count?: number }) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => {
+        const angle = (i / count) * 360;
+        const dist = 80 + Math.random() * 60;
+        const rad = (angle * Math.PI) / 180;
+        const tx = Math.cos(rad) * dist;
+        const ty = Math.sin(rad) * dist;
+        return (
+          <motion.div
+            key={i}
+            className="absolute top-1/2 left-1/2 pointer-events-none"
+            initial={{ opacity: 1, x: 0, y: 0, scale: 0 }}
+            animate={{ opacity: [1, 1, 0], x: tx, y: ty, scale: [0, 1.5, 0] }}
+            transition={{ duration: 0.8, delay: 0.1 + i * 0.02, ease: "easeOut" }}
+          >
+            <Star className="w-3 h-3 text-yellow-400 fill-yellow-400" />
+          </motion.div>
+        );
+      })}
+    </>
+  );
+}
+
+// ── 빛나는 광원 효과 ──────────────────────────────────────────────
+function GlowRings({ color }: { color: string }) {
+  return (
+    <>
+      {[1, 2, 3].map(i => (
+        <motion.div
+          key={i}
+          className="absolute inset-0 rounded-full pointer-events-none"
+          style={{ border: `2px solid ${color}`, opacity: 0 }}
+          animate={{ scale: [1, 1 + i * 0.5], opacity: [0.8, 0] }}
+          transition={{ duration: 1.5, delay: i * 0.3, repeat: Infinity, repeatDelay: 1 }}
+        />
+      ))}
+    </>
+  );
+}
+
+// ── Props ─────────────────────────────────────────────────────────
 interface CharacterUnlockPopupProps {
   isOpen: boolean;
   character: Character | null;
   onClose: () => void;
   darkMode?: boolean;
-  reason?: 'quiz' | 'chat';
+  reason?: "quiz" | "chat";
+  correctCount?: number;
+  onGoToCollection?: () => void;
 }
 
-export function CharacterUnlockPopup({ 
-  isOpen, 
-  character, 
-  onClose, 
+export function CharacterUnlockPopup({
+  isOpen,
+  character,
+  onClose,
   darkMode = false,
-  reason = 'quiz'
+  reason = "quiz",
+  correctCount,
+  onGoToCollection,
 }: CharacterUnlockPopupProps) {
-  const [characterImage, setCharacterImage] = useState<string | null>(null);
-  const [imageLoading, setImageLoading] = useState(false);
-  const [imageStatus, setImageStatus] = useState<string>('');
-  const [imageError, setImageError] = useState<string | null>(null);
+  const [phase, setPhase] = useState<"reveal" | "show">("reveal");
+  const [confettiList, setConfettiList] = useState<Array<{ id: number; color: string; delay: number }>>([]);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (isOpen && character) {
-      loadCharacterImage();
-    }
-  }, [isOpen, character]);
-
-  const loadCharacterImage = async () => {
-    if (!character) return;
-
-    // 먼저 캐시 확인
-    const cached = getCachedImage(character.id);
-    if (cached) {
-      setCharacterImage(cached);
-      return;
-    }
-
-    // 캐시에 없으면 생성
-    setImageLoading(true);
-    setImageError(null);
-
-    try {
-      const imageUrl = await getOrGenerateCharacterImage(
-        character.id,
-        character.name,
-        character.period,
-        character.role,
-        (status) => setImageStatus(status)
+      setPhase("reveal");
+      // 콘페티 생성
+      setConfettiList(
+        Array.from({ length: 60 }, (_, i) => ({
+          id: i,
+          color: CONFETTI_COLORS[i % CONFETTI_COLORS.length],
+          delay: i * 0.025,
+        }))
       );
-      setCharacterImage(imageUrl);
-    } catch (error) {
-      console.error('Failed to load character image:', error);
-      setImageError(error instanceof Error ? error.message : '이미지를 불러올 수 없습니다');
-    } finally {
-      setImageLoading(false);
+      timerRef.current = setTimeout(() => setPhase("show"), 600);
     }
-  };
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [isOpen, character]);
 
   if (!character) return null;
 
-  const reasonText = reason === 'quiz' 
-    ? '퀴즈 5개 이상 정답!' 
-    : '인물과 10턴 이상 대화 완료!';
+  const periodStyle = getPeriodStyle(character.period);
+  const reasonText =
+    reason === "quiz"
+      ? correctCount
+        ? `퀴즈 ${correctCount}개 정답 달성!`
+        : "퀴즈 5개 정답 달성!"
+      : "인물과 대화 완료!";
+
+  const handleGoCollection = () => {
+    onClose();
+    onGoToCollection?.();
+  };
 
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          {/* Backdrop */}
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+          {/* 배경 */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/75 backdrop-blur-md"
             onClick={onClose}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
           />
 
-          {/* Popup Content */}
+          {/* 콘페티 */}
+          <div className="absolute inset-0 pointer-events-none overflow-hidden">
+            {confettiList.map(p => (
+              <ConfettiParticle key={p.id} delay={p.delay} color={p.color} />
+            ))}
+          </div>
+
+          {/* 팝업 */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            initial={{ opacity: 0, scale: 0.6, y: 40 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.8, y: 20 }}
-            transition={{ type: "spring", duration: 0.5 }}
-            className={`relative max-w-md w-full rounded-3xl overflow-hidden shadow-2xl ${
-              darkMode ? 'bg-gray-800' : 'bg-white'
+            transition={{ type: "spring", stiffness: 300, damping: 24 }}
+            className={`relative w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl ${
+              darkMode ? "bg-gray-900" : "bg-white"
             }`}
+            style={{ boxShadow: `0 0 60px ${periodStyle.color}60, 0 25px 50px rgba(0,0,0,0.4)` }}
           >
-            {/* Sparkle Effects */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {[...Array(20)].map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="absolute"
-                  initial={{ 
-                    opacity: 0, 
-                    scale: 0,
-                    x: Math.random() * 400 - 200,
-                    y: Math.random() * 600 - 300
-                  }}
-                  animate={{ 
-                    opacity: [0, 1, 0],
-                    scale: [0, 1, 0],
-                    y: [0, -100]
-                  }}
-                  transition={{
-                    duration: 2,
-                    delay: i * 0.1,
-                    repeat: Infinity,
-                    repeatDelay: 2
-                  }}
-                >
-                  <Sparkles className="w-4 h-4 text-yellow-400" />
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Close Button */}
-            <button
-              onClick={onClose}
-              className={`absolute top-4 right-4 z-10 p-2 rounded-full transition-colors ${
-                darkMode 
-                  ? 'bg-gray-700 hover:bg-gray-600 text-gray-300' 
-                  : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-              }`}
+            {/* 상단 그라데이션 헤더 */}
+            <div
+              className="relative pt-8 pb-6 px-6 text-center overflow-hidden"
+              style={{ background: periodStyle.gradient }}
             >
-              <X className="w-5 h-5" />
-            </button>
+              {/* 별 폭발 */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <StarBurst count={20} />
+              </div>
 
-            {/* Content */}
-            <div className="relative p-8 text-center">
-              {/* Success Badge */}
+              {/* 배경 패턴 */}
               <motion.div
-                initial={{ scale: 0, rotate: -180 }}
+                className="absolute inset-0 opacity-10"
+                animate={{ rotate: [0, 360] }}
+                transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                style={{
+                  background: "repeating-linear-gradient(45deg, white 0px, white 1px, transparent 1px, transparent 12px)",
+                }}
+              />
+
+              {/* 획득 뱃지 */}
+              <motion.div
+                initial={{ scale: 0, rotate: -30 }}
                 animate={{ scale: 1, rotate: 0 }}
-                transition={{ delay: 0.2, type: "spring" }}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-amber-500 to-yellow-500 text-white mb-6"
+                transition={{ delay: 0.2, type: "spring", stiffness: 400 }}
+                className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm px-4 py-1.5 rounded-full mb-3"
               >
-                <Star className="w-5 h-5 fill-current" />
-                <span className="font-bold">카드 획득!</span>
-                <Star className="w-5 h-5 fill-current" />
+                <Trophy className="w-4 h-4 text-yellow-300 fill-yellow-300" />
+                <span className="text-white font-black text-sm">카드 획득!</span>
+                <Trophy className="w-4 h-4 text-yellow-300 fill-yellow-300" />
               </motion.div>
 
-              {/* Title */}
+              {/* 제목 */}
               <motion.h2
-                initial={{ opacity: 0, y: 20 }}
+                initial={{ opacity: 0, y: 15 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3 }}
-                className={`text-3xl font-bold mb-2 ${
-                  darkMode ? 'text-white' : 'text-gray-900'
-                }`}
+                className="text-white text-2xl font-black mb-1"
               >
-                축하합니다! 🎉
+                🎉 축하합니다!
               </motion.h2>
-
-              {/* Reason */}
               <motion.p
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.4 }}
-                className={`text-sm mb-6 ${
-                  darkMode ? 'text-gray-400' : 'text-gray-600'
-                }`}
+                className="text-white/80 text-sm font-medium"
               >
                 {reasonText}
               </motion.p>
 
-              {/* Character Card */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.5, type: "spring" }}
-                className={`relative p-6 rounded-2xl mb-6 ${ 
-                  darkMode 
-                    ? 'bg-gradient-to-br from-purple-900/50 to-blue-900/50 border border-purple-700' 
-                    : 'bg-gradient-to-br from-purple-50 to-blue-50 border border-purple-200'
-                }`}
+              {/* 닫기 */}
+              <button
+                onClick={onClose}
+                className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-colors"
               >
-                {/* Character Image or Loading */}
-                <div className="mb-4">
-                  {imageLoading ? (
-                    <div className="flex flex-col items-center justify-center h-48">
-                      <Loader2 className="w-12 h-12 text-purple-600 animate-spin mb-3" />
-                      <p className={`text-sm ${
-                        darkMode ? 'text-gray-400' : 'text-gray-600'
-                      }`}>
-                        {imageStatus || 'AI로 초상화 생성 중...'}
-                      </p>
-                    </div>
-                  ) : characterImage ? (
-                    <div className="relative w-full aspect-square rounded-xl overflow-hidden bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
-                      <ImageWithFallback
-                        src={characterImage}
-                        alt={character.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                  ) : imageError ? (
-                    <div className="flex flex-col items-center justify-center h-48">
-                      <div className="text-6xl mb-3">{character.emoji || '👤'}</div>
-                      <p className="text-xs text-red-500">{imageError}</p>
-                    </div>
-                  ) : (
-                    <div className="text-6xl">
-                      {character.emoji || '👤'}
-                    </div>
-                  )}
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* 카드 본체 */}
+            <div className="px-6 py-5">
+              {/* 카드 flip 등장 */}
+              <motion.div
+                className="relative mx-auto"
+                style={{ width: 160, perspective: "800px" }}
+                initial={{ rotateY: -180, opacity: 0 }}
+                animate={{ rotateY: 0, opacity: 1 }}
+                transition={{ delay: 0.5, duration: 0.7, ease: "easeOut" }}
+              >
+                {/* 광원 링 */}
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="relative w-full h-full">
+                    <GlowRings color={periodStyle.color} />
+                  </div>
                 </div>
 
-                {/* Character Name */}
-                <h3 className={`text-2xl font-bold mb-2 ${
-                  darkMode ? 'text-white' : 'text-gray-900'
-                }`}>
-                  {character.name}
-                </h3>
-
-                {/* Character Info */}
-                <div className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm ${
-                  darkMode ? 'bg-gray-700 text-gray-300' : 'bg-white text-gray-700'
-                }`}>
-                  <span>{character.period}</span>
-                  <span>•</span>
-                  <span>{character.role}</span>
-                </div>
-
-                {/* Achievement Badge */}
-                <div className="mt-4 pt-4 border-t border-current/10">
-                  <p className={`text-sm ${
-                    darkMode ? 'text-purple-300' : 'text-purple-700'
-                  }`}>
-                    이제 {character.name}와(과) 대화할 수 있어요!
-                  </p>
+                {/* 카드 */}
+                <div
+                  className="relative rounded-2xl overflow-hidden shadow-xl"
+                  style={{
+                    border: `3px solid ${periodStyle.color}`,
+                    boxShadow: `0 0 30px ${periodStyle.color}60`,
+                  }}
+                >
+                  {/* 이미지 - public/characters 경로 우선, 모든 확장자 순차 시도 */}
+                  {(() => {
+                    const primarySrc = resolveCharacterImage(character.id, character.period, character.imageUrl);
+                    // 모든 확장자 후보 (webp, jpg, jpeg, png) 중 primary와 다른 것들
+                    const candidates = getCharacterImageCandidates(character.id, character.period);
+                    const fallbacks = candidates.filter(c => c !== primarySrc);
+                    return (
+                      <div className="aspect-[3/4] w-full">
+                        <ImageWithFallback
+                          src={primarySrc}
+                          alt={character.name}
+                          className="w-full h-full object-cover"
+                          fallbackSrc={fallbacks}
+                          fallbackEmoji={character.emoji ?? "👤"}
+                        />
+                      </div>
+                    );
+                  })()}
+                  {/* 카드 하단 이름 */}
+                  <div
+                    className="absolute bottom-0 left-0 right-0 px-3 py-2 text-center"
+                    style={{ background: periodStyle.gradient }}
+                  >
+                    <p className="text-white font-black text-sm">
+                      {character.name.replace(/^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿]\s*/, '')}
+                    </p>
+                    <p className="text-white/70 text-[10px]">{character.role}</p>
+                  </div>
+                  {/* 반짝이 효과 */}
+                  <motion.div
+                    className="absolute top-2 right-2"
+                    animate={{ rotate: 360, scale: [1, 1.5, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                  >
+                    <Sparkles className="w-5 h-5 text-yellow-300 fill-yellow-300" />
+                  </motion.div>
                 </div>
               </motion.div>
 
-              {/* Action Button */}
-              <motion.button
-                initial={{ opacity: 0, y: 20 }}
+              {/* 인물 정보 */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.6 }}
-                onClick={onClose}
-                className="w-full py-4 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold text-lg shadow-lg hover:shadow-xl transition-all hover:scale-105"
+                transition={{ delay: 0.9 }}
+                className="mt-4 text-center"
               >
-                확인
-              </motion.button>
+                <div
+                  className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold text-white mb-2"
+                  style={{ background: periodStyle.gradient }}
+                >
+                  <span>{character.period}</span>
+                  <span>·</span>
+                  <span>{character.role}</span>
+                </div>
+                <p className={`text-xs leading-relaxed ${darkMode ? "text-gray-400" : "text-gray-500"}`}>
+                  {character.description?.slice(0, 80)}...
+                </p>
+              </motion.div>
+
+              {/* 버튼 영역 */}
+              <motion.div
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 1.0 }}
+                className="mt-5 space-y-2"
+              >
+                {onGoToCollection && (
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleGoCollection}
+                    className="w-full py-3 rounded-2xl text-white font-bold text-sm flex items-center justify-center gap-2 shadow-lg"
+                    style={{ background: periodStyle.gradient }}
+                  >
+                    <Star className="w-4 h-4 fill-current" />
+                    카드 컬렉션에서 확인하기
+                  </motion.button>
+                )}
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={onClose}
+                  className={`w-full py-3 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 ${
+                    darkMode ? "bg-gray-800 text-gray-200 hover:bg-gray-700" : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                  }`}
+                >
+                  <MessageCircle className="w-4 h-4" />
+                  퀴즈 계속하기
+                </motion.button>
+              </motion.div>
+            </div>
+
+            {/* 하단 진행 힌트 */}
+            <div
+              className="px-6 py-3 text-center"
+              style={{ background: `${periodStyle.color}15` }}
+            >
+              <p className={`text-[11px] ${darkMode ? "text-gray-500" : "text-gray-500"}`}>
+                💡 퀴즈 5개 정답마다 새 카드를 획득해요!
+              </p>
             </div>
           </motion.div>
         </div>

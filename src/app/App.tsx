@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { AnimatedBackground } from "./components/AnimatedBackground";
 import { WelcomeScreen } from "./components/WelcomeScreen";
+import type { Lang } from "./utils/i18n";
 import { LoginModal } from "./components/LoginModal";
 import { CharacterUnlockPopup } from "./components/CharacterUnlockPopup";
 import { CharacterCollectionImproved } from "./components/CharacterCollectionImproved";
-import { CharacterSelectionImproved } from "./components/CharacterSelectionImproved";
 import { PeriodSelection } from "./components/PeriodSelection";
 import { QuizScreen } from "./components/QuizScreenImproved";
 import { ResultScreen } from "./components/ResultScreen";
@@ -16,10 +16,22 @@ import { CharacterChatScreen } from "./components/CharacterChatScreen";
 import { AIGoodsCreatorImproved } from "./components/AIGoodsCreatorImproved";
 import { MuseumTour } from "./components/MuseumTour";
 import { ArtifactExpert } from "./components/ArtifactExpert";
+import { AdminDashboard } from "./components/AdminDashboard";
+import AdminImageManager from "./components/AdminImageManager";
 import { quizData, characters as initialCharacters } from "./data/quizData";
+import { allCharacters } from "./data/charactersData";
 import type { Character } from "./data/quizData";
 import { mapAllQuizzesToCharacters } from "./utils/quizCharacterMapping";
 import { prefetchUpcoming } from "./utils/quizImageService";
+import {
+  loadStudyRecord,
+  saveStudyRecord,
+  recordCorrectAnswer,
+  recordWrongAnswer,
+  recalcPeriodStats,
+  getCompletedQuestionIds,
+  recordChatCompleted,
+} from "./utils/studyRecord";
 import { 
   initializeUserSession, 
   getCurrentUserId, 
@@ -42,7 +54,9 @@ type Screen =
   | 'character-chat'
   | 'goods-generator'
   | 'museum-tour'
-  | 'artifact-expert';
+  | 'artifact-expert'
+  | 'admin'
+  | 'admin-images';
 
 interface WrongAnswer {
   question: string;
@@ -61,10 +75,15 @@ export default function App() {
   const [score, setScore] = useState(0);
   const [maxScore, setMaxScore] = useState(0);
   const [correctAnswers, setCorrectAnswers] = useState(0);
+  // ── correctAnswers를 동기적으로 추적 (stale closure 방지) ──
+  const correctAnswersRef = useRef(0);
   const [wrongAnswers, setWrongAnswers] = useState<WrongAnswer[]>([]);
   const [characters, setCharacters] = useState<Character[]>(initialCharacters);
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [darkMode, setDarkMode] = useState(false);
+  const [lang, setLang] = useState<Lang>(() => {
+    try { return (localStorage.getItem('lang') as Lang) || 'ko'; } catch { return 'ko'; }
+  });
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<{ name: string; email: string } | null>(null);
   const [unlockedCharacter, setUnlockedCharacter] = useState<Character | null>(null);
@@ -76,55 +95,125 @@ export default function App() {
   // 로그인 후 학습 시작을 자동 실행하기 위한 플래그
   const [pendingStart, setPendingStart] = useState(false);
 
-  // Initialize user session with Supabase
+  // ── 채팅 완료 점수 게시판 연동 ────────────────────────────────
+  const [chatScore, setChatScore] = useState(0);
+  const [chatCharacterName, setChatCharacterName] = useState<string | undefined>();
+  const [chatPeriod, setChatPeriod] = useState<string | undefined>();
+
+  // ── 현재 학습자 ID (로그인 유저 email, 미로그인 시 'guest') ────
+  const currentUserId = currentUser?.email ?? 'guest';
+
+  // ── 해금된 인물 ID Set (allCharacters 210명 전체에 적용) ──────────
+  const [unlockedIds, setUnlockedIds] = useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('unlockedCharacterIds');
+      return saved ? new Set<string>(JSON.parse(saved)) : new Set<string>();
+    } catch {
+      return new Set<string>();
+    }
+  });
+  // ── unlockedIds를 동기적으로 추적 (stale closure 방지) ──
+  const unlockedIdsRef = useRef<Set<string>>(new Set<string>());
+
+  // Initialize user session — 서버 미배포 시에도 로컬 데이터로 완전 작동
   useEffect(() => {
     const initSession = async () => {
       setIsLoadingProfile(true);
+
+      // 1) 유저 프로필 (서버 실패 시 로컬 프로필 사용)
       try {
-        // Check if user exists in localStorage
         const savedUser = localStorage.getItem("currentUser");
         let profile: UserProfile;
-        
         if (savedUser) {
           const user = JSON.parse(savedUser);
           setCurrentUser(user);
           profile = await initializeUserSession(user.name, user.email);
         } else {
-          // Initialize anonymous session
           profile = await initializeUserSession();
         }
-        
         setUserProfile(profile);
+      } catch {
+        // initializeUserSession 자체가 이미 로컬 폴백을 반환하므로 여기까지 오지 않음
+      }
 
-        // Load completed questions
+      // 2) 완료 문제 로드: localStorage studyRecord 우선, 서버 보조
+      {
+        const savedUser = localStorage.getItem("currentUser");
+        const userId = savedUser ? JSON.parse(savedUser).email : 'guest';
+
+        // ① localStorage에서 즉시 로드 (항상 실행)
+        const localCompleted = getCompletedQuestionIds(userId);
+        if (localCompleted.length > 0) {
+          setCompletedQuestions(localCompleted);
+        }
+
+        // ② 서버에서 추가 동기화 (선택적)
+        try {
+          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ngvsfcekfzzykvcsjktp.supabase.co';
+          const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
+          const quizRes = await fetch(
+            `${supabaseUrl}/functions/v1/make-server-48be01a5/quiz/completed/${userId}`,
+            { headers: { 'Authorization': `Bearer ${anonKey}` }, signal: AbortSignal.timeout(5000) }
+          );
+          if (quizRes.ok) {
+            const data = await quizRes.json();
+            if (data.success && Array.isArray(data.data?.questions) && data.data.questions.length > 0) {
+              // 서버 데이터와 로컬 데이터 합산 (더 많은 쪽 유지)
+              const serverIds: number[] = data.data.questions;
+              const merged = [...new Set([...localCompleted, ...serverIds])];
+              // studyRecord에도 반영
+              const record = loadStudyRecord(userId);
+              record.completedQuestionIds = merged;
+              saveStudyRecord(record);
+              setCompletedQuestions(merged);
+            }
+          }
+        } catch {
+          // 서버 미배포·네트워크 오류 시 로컬 데이터 유지
+        }
+      }
+
+      // 3) 해금 카드 목록 로드 (서버 미배포 시 localStorage 유지)
+      try {
+        const savedUser = localStorage.getItem("currentUser");
         const userId = savedUser ? JSON.parse(savedUser).email : 'guest';
         const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ngvsfcekfzzykvcsjktp.supabase.co';
         const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
-        const response = await fetch(
-          `${supabaseUrl}/functions/v1/make-server-48be01a5/quiz/completed/${userId}`,
+
+        const cardsRes = await fetch(
+          `${supabaseUrl}/functions/v1/make-server-48be01a5/cards/${userId}`,
           {
-            headers: {
-              'Authorization': `Bearer ${anonKey}`
-            }
+            headers: { 'Authorization': `Bearer ${anonKey}` },
+            signal: AbortSignal.timeout(5000),
           }
         );
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.data?.questions) {
-            setCompletedQuestions(data.data.questions);
-            console.log('Loaded completed questions:', data.data.questions.length);
+        if (cardsRes.ok) {
+          const cardsData = await cardsRes.json();
+          if (cardsData.success && Array.isArray(cardsData.data) && cardsData.data.length > 0) {
+            const apiIds = new Set<string>(
+              cardsData.data.map((c: { characterId: string }) => c.characterId)
+            );
+            setUnlockedIds(prev => {
+              const merged = new Set<string>([...prev, ...apiIds]);
+              localStorage.setItem('unlockedCharacterIds', JSON.stringify([...merged]));
+              return merged;
+            });
           }
         }
-      } catch (error) {
-        console.error("Failed to initialize session:", error);
-      } finally {
-        setIsLoadingProfile(false);
+      } catch {
+        // 서버 미배포·네트워크 오류 시 localStorage 데이터 유지
       }
+
+      setIsLoadingProfile(false);
     };
-    
+
     initSession();
   }, []);
+
+  // ── unlockedIds ref 동기화 ──────────────────────────────────────
+  useEffect(() => {
+    unlockedIdsRef.current = unlockedIds;
+  }, [unlockedIds]);
 
   // Filter out completed questions
   const allQuestionsForPeriod = selectedPeriod ? mappedQuizData[selectedPeriod] || [] : [];
@@ -141,23 +230,34 @@ export default function App() {
       setCurrentScreen('character-chat');
       return;
     }
+
+    // 해당 시대에 남은 문제 계산 (completedQuestions 최신 상태 반영)
+    const remaining = (mappedQuizData[period] || []).filter(q => !completedQuestions.includes(q.id));
+    if (remaining.length === 0) {
+      // 이미 모두 완료 → result 화면 대신 period-selection 유지 (완료 표시는 카드에서)
+      // 재도전 여부를 묻지 않고 선택만 유지
+      return;
+    }
     
     setSelectedPeriod(period);
     setCurrentQuestionIndex(0);
     setScore(0);
     setMaxScore(0);
     setCorrectAnswers(0);
+    correctAnswersRef.current = 0;
     setWrongAnswers([]);
     setCurrentScreen('quiz');
 
     // Prefetch next 8 question images in background (fire-and-forget)
-    const qs = (mappedQuizData[period] || []).filter(q => !completedQuestions.includes(q.id));
-    prefetchUpcoming(qs, 8);
+    prefetchUpcoming(remaining, 8);
   };
 
   const handleSubmitAnswer = async (userAnswer: string, hintsUsed: number) => {
     const isCorrect = userAnswer.toLowerCase().trim() === currentQuestion.answer.toLowerCase().trim();
     
+    // 시대별 전체 문제 수 (중복제거 필터 전)
+    const periodTotalCount = (mappedQuizData[selectedPeriod] || []).length;
+
     // Calculate score based on hints used (elementary school level: 70 base points)
     let points = 0;
     if (isCorrect) {
@@ -166,54 +266,44 @@ export default function App() {
       points = Math.max(basePoints - hintPenalty, 10);
       setScore(prev => prev + points);
       setMaxScore(prev => prev + basePoints);
-      setCorrectAnswers(prev => {
-        const newCount = prev + 1;
-        
-        // Check if user reached 5 correct answers to unlock character
-        if (newCount === 5) {
-          unlockRandomCharacterFromPeriod(selectedPeriod);
-        }
-        
-        return newCount;
-      });
 
-      // Add to completed questions list
-      setCompletedQuestions(prev => {
-        if (!prev.includes(currentQuestion.id)) {
-          return [...prev, currentQuestion.id];
-        }
-        return prev;
-      });
+      // ── ref로 동기적 카운트 증가 → stale closure 없이 카드 해금 판단 ──
+      const newCount = correctAnswersRef.current + 1;
+      correctAnswersRef.current = newCount;
+      setCorrectAnswers(newCount);
 
-      // Unlock character if associated
-      if (currentQuestion.characterId) {
-        setCharacters(prev => 
-          prev.map(char => 
-            char.id === currentQuestion.characterId 
-              ? { ...char, unlocked: true }
-              : char
-          )
-        );
-        
-        // Save to Supabase
-        const userId = getCurrentUserId();
-        if (userId) {
-          try {
-            const character = initialCharacters.find(c => c.id === currentQuestion.characterId);
-            if (character) {
-              await unlockCharacterCard({
-                userId,
-                characterId: character.id,
-                characterName: character.name,
-                period: selectedPeriod,
-                unlockedBy: 'quiz'
-              });
-            }
-          } catch (error) {
-            console.error("Failed to save card unlock:", error);
-          }
-        }
+      // 5개 맞출 때마다 (5, 10, 15...) 카드 해금
+      if (newCount % 5 === 0) {
+        unlockRandomCharacterFromPeriod(selectedPeriod);
       }
+
+      // ── studyRecord 정답 기록 + completedQuestions 업데이트 ──
+      const updatedRecord = recordCorrectAnswer(
+        currentUserId,
+        currentQuestion.id,
+        selectedPeriod,
+        periodTotalCount
+      );
+      // 시대별 completedCount 정확히 재계산
+      const periodQuizIds: Record<string, number[]> = {};
+      for (const [p, qs] of Object.entries(mappedQuizData)) {
+        periodQuizIds[p] = qs.map(q => q.id);
+      }
+      const recalcedRecord = recalcPeriodStats(updatedRecord, periodQuizIds);
+      saveStudyRecord(recalcedRecord);
+      setCompletedQuestions(recalcedRecord.completedQuestionIds);
+    } else {
+      // ── studyRecord 오답 기록 ──
+      recordWrongAnswer(
+        currentUserId,
+        currentQuestion.id,
+        currentQuestion.question,
+        userAnswer,
+        currentQuestion.answer,
+        currentQuestion.category ?? '',
+        selectedPeriod,
+        periodTotalCount
+      );
     }
     
     // Save quiz result to Supabase
@@ -239,19 +329,7 @@ export default function App() {
       }
     }
     
-    // Continue with existing logic
-    if (isCorrect) {
-      // Unlock character if associated (already handled above)
-      if (currentQuestion.characterId) {
-        setCharacters(prev => 
-          prev.map(char => 
-            char.id === currentQuestion.characterId 
-              ? { ...char, unlocked: true }
-              : char
-          )
-        );
-      }
-    } else {
+    if (!isCorrect) {
       setWrongAnswers(prev => [...prev, {
         question: currentQuestion.question,
         userAnswer,
@@ -265,11 +343,6 @@ export default function App() {
     if (currentQuestionIndex < currentQuestions.length - 1) {
       setCurrentQuestionIndex(prev => prev + 1);
     } else {
-      // Check if user got 5 or more correct answers and unlock a character
-      const finalCorrectCount = isCorrect ? correctAnswers + 1 : correctAnswers;
-      if (finalCorrectCount >= 5) {
-        unlockRandomCharacterFromPeriod(selectedPeriod);
-      }
       setCurrentScreen('result');
     }
   };
@@ -281,6 +354,7 @@ export default function App() {
     setScore(0);
     setMaxScore(0);
     setCorrectAnswers(0);
+    correctAnswersRef.current = 0;
     setWrongAnswers([]);
   };
 
@@ -314,70 +388,104 @@ export default function App() {
     }
   };
 
-  const unlockRandomCharacterFromPeriod = (period: string) => {
-    // Map period to character period names
+  // ── 공통 해금 함수: unlockedIds Set + localStorage + 팝업 처리 ──
+  const doUnlockCharacter = useCallback((char: Character, reason: 'quiz' | 'chat') => {
+    // ref 기준으로 이미 해금된 경우 스킵 (stale closure 방지)
+    if (unlockedIdsRef.current.has(char.id)) return;
+
+    setUnlockedIds(prev => {
+      if (prev.has(char.id)) return prev;
+      const next = new Set(prev);
+      next.add(char.id);
+      unlockedIdsRef.current = next; // ref 즉시 동기화
+      localStorage.setItem('unlockedCharacterIds', JSON.stringify([...next]));
+      return next;
+    });
+    // 18명 quizData characters 상태도 동기화
+    setCharacters(prev =>
+      prev.map(c => c.id === char.id ? { ...c, unlocked: true } : c)
+    );
+    // 팝업
+    setUnlockedCharacter(char);
+    setUnlockReason(reason);
+    setShowUnlockPopup(true);
+
+    // Supabase API 저장 (비동기, 실패해도 무시)
+    const userId = getCurrentUserId();
+    if (userId) {
+      unlockCharacterCard({
+        userId,
+        characterId: char.id,
+        characterName: char.name,
+        period: char.period,
+        unlockedBy: reason,
+      }).catch(() => {});
+    }
+  }, []);
+
+  const unlockRandomCharacterFromPeriod = useCallback((period: string) => {
+    // 퀴즈 period key → allCharacters period 이름 매핑
     const periodMap: Record<string, string[]> = {
       'three-kingdoms': ['고조선', '삼국시대'],
-      'goryeo': ['고려시대'],
-      'joseon': ['조선시대'],
-      'modern': ['근현대']
+      'three-kingdoms-period': ['삼국시대'],
+      'goryeo':         ['고려'],
+      'joseon':         ['조선'],
+      'modern':         ['근현대'],
     };
 
     const targetPeriods = periodMap[period] || [];
-    const lockedCharacters = characters.filter(
-      c => !c.unlocked && targetPeriods.includes(c.period)
-    );
+    // ── ref 사용: 항상 최신 unlockedIds로 검색 ──
+    const currentUnlocked = unlockedIdsRef.current;
+    const locked = allCharacters.filter(c => {
+      const inPeriod = targetPeriods.some(p => c.period.includes(p));
+      return inPeriod && !currentUnlocked.has(c.id);
+    });
 
-    if (lockedCharacters.length > 0) {
-      const randomChar = lockedCharacters[Math.floor(Math.random() * lockedCharacters.length)];
-      setCharacters(prev => 
-        prev.map(char => 
-          char.id === randomChar.id
-            ? { ...char, unlocked: true }
-            : char
-        )
-      );
-      
-      // Show unlock popup
-      setUnlockedCharacter(randomChar);
-      setUnlockReason('quiz');
-      setShowUnlockPopup(true);
+    if (locked.length > 0) {
+      const randomChar = locked[Math.floor(Math.random() * locked.length)];
+      doUnlockCharacter(randomChar, 'quiz');
     }
-  };
+  }, [doUnlockCharacter]);
 
-  const unlockCharacterById = (characterId: string, reason: 'quiz' | 'chat' = 'chat') => {
-    const character = characters.find(c => c.id === characterId);
-    
-    setCharacters(prev => 
-      prev.map(char => 
-        char.id === characterId
-          ? { ...char, unlocked: true }
-          : char
-      )
-    );
-
-    // Show unlock popup if character was locked
-    if (character && !character.unlocked) {
-      setUnlockedCharacter(character);
-      setUnlockReason(reason);
-      setShowUnlockPopup(true);
-    }
-  };
+  const unlockCharacterById = useCallback((characterId: string, reason: 'quiz' | 'chat' = 'chat') => {
+    if (unlockedIdsRef.current.has(characterId)) return;
+    // allCharacters 210명에서 먼저 찾고, 없으면 18명에서 찾기
+    const char =
+      allCharacters.find(c => c.id === characterId) ||
+      characters.find(c => c.id === characterId);
+    if (!char) return;
+    doUnlockCharacter(char, reason);
+  }, [characters, doUnlockCharacter]);
 
   const handleSelectCharacter = (character: Character) => {
     setSelectedCharacter(character);
     setCurrentScreen('ai-chat');
   };
 
+  // ── 역사 인물 대화 완료 → 300점 + 리더보드 이동 ──────────────
+  const handleChatCompleted = useCallback((earnedScore: number, charName: string, period: string, characterId: string) => {
+    setChatScore(earnedScore);
+    setChatCharacterName(charName.replace(/^[①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬⑭⑮⑯⑰⑱⑲⑳㉑㉒㉓㉔㉕㉖㉗㉘㉙㉚㉛㉜㉝㉞㉟㊱㊲㊳㊴㊵㊶㊷㊸㊹㊺㊻㊼㊽㊾㊿]\s*/, ''));
+    setChatPeriod(period);
+    // 대화 완료 인물 기록
+    const userId = currentUser?.email || currentUser?.name || 'guest';
+    recordChatCompleted(userId, characterId);
+    setCurrentScreen('leaderboard');
+  }, [currentUser]);
+
   const handleToggleTheme = () => {
     setDarkMode(prev => !prev);
   };
 
-  const handleLogin = async (userName: string) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:handleLogin',message:'login called',data:{userName},timestamp:Date.now(),hypothesisId:'A',runId:'login-1'})}).catch(()=>{});
-    // #endregion
+  const handleToggleLang = () => {
+    setLang(prev => {
+      const next: Lang = prev === 'ko' ? 'en' : 'ko';
+      try { localStorage.setItem('lang', next); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
+  const handleLogin = async (userName: string) => {
     // LoginModal stores { name, email } in localStorage before calling onLogin
     const storedUser = (() => {
       try { return JSON.parse(localStorage.getItem("currentUser") || "null"); } catch { return null; }
@@ -390,24 +498,21 @@ export default function App() {
       Object.keys(users).find(email => email.split("@")[0] === userName) ??
       "";
 
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:handleLogin',message:'resolved email',data:{userName,userEmail,storedUser},timestamp:Date.now(),hypothesisId:'B',runId:'login-1'})}).catch(()=>{});
-    // #endregion
-
     const user = { name: userName, email: userEmail };
     setCurrentUser(user);
-    setPendingStart(true); // 즉시 설정 — Supabase 동기화 기다리지 않음
+    setPendingStart(true);
+
+    // ── 로그인 유저의 studyRecord에서 완료 문제 즉시 로드 ──
+    const userId = userEmail || userName;
+    const localCompleted = getCompletedQuestionIds(userId);
+    if (localCompleted.length > 0) {
+      setCompletedQuestions(localCompleted);
+    }
 
     // Initialize or update Supabase profile (best-effort, non-blocking)
     initializeUserSession(userName, userEmail || undefined).then(profile => {
       setUserProfile(profile);
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:handleLogin',message:'supabase profile synced',data:{profile},timestamp:Date.now(),hypothesisId:'C',runId:'login-1'})}).catch(()=>{});
-      // #endregion
     }).catch(error => {
-      // #region agent log
-      fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:handleLogin',message:'supabase sync failed',data:{error:String(error)},timestamp:Date.now(),hypothesisId:'D',runId:'login-1'})}).catch(()=>{});
-      // #endregion
       console.error("Failed to sync user profile:", error);
     });
   };
@@ -430,6 +535,8 @@ export default function App() {
               onStart={handleStart}
               darkMode={darkMode}
               onToggleTheme={handleToggleTheme}
+              lang={lang}
+              onToggleLang={handleToggleLang}
               onGoToGoodsGenerator={() => setCurrentScreen('goods-generator')}
               onGoToMuseumTour={() => setCurrentScreen('museum-tour')}
               onGoToArtifactExpert={() => setCurrentScreen('artifact-expert')}
@@ -442,6 +549,7 @@ export default function App() {
               isLoadingProfile={isLoadingProfile}
               pendingStart={pendingStart}
               onClearPendingStart={() => setPendingStart(false)}
+              onGoToAdmin={() => setCurrentScreen('admin')}
             />
             <LoginModal
               isOpen={isLoginModalOpen}
@@ -459,19 +567,19 @@ export default function App() {
             darkMode={darkMode}
             completedQuestions={completedQuestions}
             quizData={mappedQuizData}
+            currentUser={currentUser}
           />
         )}
 
         {currentScreen === 'character-selection' && (
-          <CharacterSelectionImproved
-            characters={characters}
-            onBack={() => setCurrentScreen('welcome')}
+          <CharacterChatScreen
+            onBack={() => { setSelectedCharacter(null); setCurrentScreen('welcome'); }}
             onHome={handleBackToWelcome}
             darkMode={darkMode}
-            onSelectCharacter={(character) => {
-              setSelectedCharacter(character);
-              setCurrentScreen('ai-chat');
-            }}
+            lang={lang}
+            onUnlockCharacter={unlockCharacterById}
+            onChatCompleted={handleChatCompleted}
+            initialCharacter={selectedCharacter ?? undefined}
           />
         )}
 
@@ -504,6 +612,8 @@ export default function App() {
             onViewWrongAnswers={() => setCurrentScreen('wrong-answers')}
             onGoToLeaderboard={() => setCurrentScreen('leaderboard')}
             onGoToCollection={() => setCurrentScreen('character-collection')}
+            currentUser={currentUser}
+            selectedPeriod={selectedPeriod}
           />
         )}
 
@@ -518,13 +628,13 @@ export default function App() {
 
         {currentScreen === 'character-collection' && (
           <CharacterCollectionImproved
-            characters={characters}
+            unlockedIds={unlockedIds}
             onBack={() => setCurrentScreen('welcome')}
             onHome={handleBackToWelcome}
             darkMode={darkMode}
             onSelectCharacter={(character) => {
               setSelectedCharacter(character);
-              setCurrentScreen('ai-chat');
+              setCurrentScreen('character-selection');
             }}
           />
         )}
@@ -539,9 +649,22 @@ export default function App() {
 
         {currentScreen === 'leaderboard' && (
           <Leaderboard
-            onClose={() => setCurrentScreen('result')}
+            onClose={() => {
+              if (chatScore > 0 && chatCharacterName) {
+                setChatScore(0);
+                setChatCharacterName(undefined);
+                setChatPeriod(undefined);
+                setCurrentScreen('character-chat');
+              } else {
+                setCurrentScreen('result');
+              }
+            }}
             onHome={handleBackToWelcome}
-            userScore={score}
+            userScore={chatScore > 0 ? chatScore : score}
+            scoreSource={chatScore > 0 ? "chat" : "quiz"}
+            characterName={chatCharacterName}
+            period={chatPeriod}
+            lang={lang}
           />
         )}
 
@@ -550,7 +673,9 @@ export default function App() {
             onBack={handleBackToPeriodSelection}
             onHome={handleBackToWelcome}
             darkMode={darkMode}
+            lang={lang}
             onUnlockCharacter={unlockCharacterById}
+            onChatCompleted={handleChatCompleted}
           />
         )}
 
@@ -559,6 +684,7 @@ export default function App() {
             onBack={() => setCurrentScreen('welcome')}
             onHome={handleBackToWelcome}
             darkMode={darkMode}
+            lang={lang}
           />
         )}
 
@@ -575,6 +701,19 @@ export default function App() {
             darkMode={darkMode}
           />
         )}
+
+        {currentScreen === 'admin' && (
+          <AdminDashboard
+            onBack={() => setCurrentScreen('welcome')}
+            onGoToImages={() => setCurrentScreen('admin-images')}
+          />
+        )}
+
+        {currentScreen === 'admin-images' && (
+          <AdminImageManager
+            onBack={() => setCurrentScreen('admin')}
+          />
+        )}
         </div>
       </div>
 
@@ -585,6 +724,11 @@ export default function App() {
         onClose={() => setShowUnlockPopup(false)}
         darkMode={darkMode}
         reason={unlockReason}
+        correctCount={correctAnswers}
+        onGoToCollection={() => {
+          setShowUnlockPopup(false);
+          setCurrentScreen('character-collection');
+        }}
       />
     </div>
   );

@@ -1,28 +1,69 @@
 import React, { useState } from 'react'
 
-const ERROR_IMG_SRC =
-  'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODgiIGhlaWdodD0iODgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgc3Ryb2tlPSIjMDAwIiBzdHJva2UtbGluZWpvaW49InJvdW5kIiBvcGFjaXR5PSIuMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLXdpZHRoPSIzLjciPjxyZWN0IHg9IjE2IiB5PSIxNiIgd2lkdGg9IjU2IiBoZWlnaHQ9IjU2IiByeD0iNiIvPjxwYXRoIGQ9Im0xNiA1OCAxNi0xOCAzMiAzMiIvPjxjaXJjbGUgY3g9IjUzIiBjeT0iMzUiIHI9IjciLz48L3N2Zz4KCg=='
+interface ImageWithFallbackProps extends React.ImgHTMLAttributes<HTMLImageElement> {
+  fallbackSrc?: string | string[];
+  fallbackEmoji?: string;
+}
 
-export function ImageWithFallback(props: React.ImgHTMLAttributes<HTMLImageElement>) {
-  const [didError, setDidError] = useState(false)
+export function ImageWithFallback(props: ImageWithFallbackProps) {
+  const { src, alt, style, className, onError, fallbackSrc, fallbackEmoji, ...rest } = props
 
-  const { src, alt, style, className, onError, ...rest } = props
+  // fallbackSrc를 배열로 정규화
+  const fallbacks: string[] = fallbackSrc
+    ? (Array.isArray(fallbackSrc) ? fallbackSrc : [fallbackSrc])
+    : []
+
+  // 현재 시도 중인 src 인덱스 (-1 = 원본 src)
+  const [fallbackIndex, setFallbackIndex] = useState(-1)
+
+  const currentSrc = fallbackIndex === -1 ? src : fallbacks[fallbackIndex]
 
   const handleError: React.ReactEventHandler<HTMLImageElement> = (e) => {
-    setDidError(true)
-    onError?.(e)
+    const nextIndex = fallbackIndex + 1
+    if (nextIndex < fallbacks.length) {
+      setFallbackIndex(nextIndex)
+    } else {
+      setFallbackIndex(fallbacks.length) // 모두 실패 → 이모지
+      onError?.(e)
+    }
   }
 
-  return didError ? (
-    <div
-      className={`inline-block bg-gray-100 text-center align-middle ${className ?? ''}`}
-      style={style}
-    >
-      <div className="flex items-center justify-center w-full h-full">
-        <img src={ERROR_IMG_SRC} alt="Error loading image" data-original-url={src} />
+  // 모든 src 소진 → 이모지 fallback
+  if (fallbackIndex >= fallbacks.length && fallbacks.length > 0) {
+    return (
+      <div
+        className={`inline-flex items-center justify-center bg-gradient-to-br from-purple-100 to-pink-100 ${className ?? ''}`}
+        style={style}
+      >
+        <span className="text-4xl select-none" role="img" aria-label={alt}>
+          {fallbackEmoji ?? '👤'}
+        </span>
       </div>
-    </div>
-  ) : (
-    <img src={src} alt={alt} className={className} style={style} {...rest} onError={handleError} />
+    )
+  }
+
+  // src가 없고 fallback도 없으면 이모지
+  if (!currentSrc) {
+    return (
+      <div
+        className={`inline-flex items-center justify-center bg-gradient-to-br from-purple-100 to-pink-100 ${className ?? ''}`}
+        style={style}
+      >
+        <span className="text-4xl select-none" role="img" aria-label={alt}>
+          {fallbackEmoji ?? '👤'}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <img
+      src={currentSrc}
+      alt={alt}
+      className={className}
+      style={style}
+      {...rest}
+      onError={handleError}
+    />
   )
 }

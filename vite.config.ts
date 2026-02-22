@@ -11,10 +11,8 @@ export default defineConfig({
     tailwindcss(),
   ],
   server: {
-    // Ensure correct charset is sent for all HTML responses
-    headers: {
-      'Content-Type': 'text/html; charset=UTF-8',
-    },
+    // Note: Do NOT set Content-Type here — it overrides ALL responses including .tsx and .css files,
+    // which breaks font loading and module execution. Vite handles Content-Type per file type correctly.
   },
   resolve: {
     alias: {

@@ -1,12 +1,24 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
-  ArrowLeft, Home, User, MessageCircle, Plus, 
-  Search, Sparkles, Crown, ChevronRight
+  ArrowLeft, Home, User, MessageCircle,
+  Search, Sparkles, ChevronRight
 } from "lucide-react";
 import type { Character } from "../data/quizData";
 import { getCachedImage } from "../utils/aiImageGenerator";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+import { getCharacterImagePath } from "../utils/characterImageMap";
+
+// 시대별 폴더 매핑 (카드 이미지 경로)
+const PERIOD_FOLDER: Record<string, string> = {
+  고조선: "gojoseon", 삼국시대: "three-kingdoms",
+  고려: "goryeo", 조선: "joseon", 근현대: "modern",
+};
+function getCardImgSrc(character: Character): string {
+  const folder = PERIOD_FOLDER[character.period];
+  if (folder) return getCharacterImagePath(character.id, character.period);
+  return character.imageUrl || getCachedImage(character.id) || "";
+}
 
 interface CharacterSelectionImprovedProps {
   onBack: () => void;
@@ -25,7 +37,14 @@ export function CharacterSelectionImproved({
 }: CharacterSelectionImprovedProps) {
   const [selectedCharacter, setSelectedCharacter] = useState<Character | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showAddCustom, setShowAddCustom] = useState(false);
+
+  // 대화 완료 인물 로드
+  const chattedIds: Set<string> = (() => {
+    try {
+      const raw = localStorage.getItem("chattedCharacterIds_chat");
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch { return new Set(); }
+  })();
 
   // Only show unlocked characters
   const unlockedCharacters = characters.filter(c => c.unlocked);
@@ -282,15 +301,12 @@ export function CharacterSelectionImproved({
                                     border: `2px solid ${periodColors[period]}60`
                                   }}
                                 >
-                                  {character.imageUrl ? (
-                                    <ImageWithFallback
-                                      src={character.imageUrl}
-                                      alt={character.name}
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : (
-                                    <span className="text-2xl">{character.emoji}</span>
-                                  )}
+                                  <ImageWithFallback
+                                    src={getCardImgSrc(character)}
+                                    alt={character.name}
+                                    className="w-full h-full object-cover"
+                                    fallbackEmoji={character.emoji ?? "👤"}
+                                  />
                                   
                                   {/* Online Indicator */}
                                   <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#10B981] rounded-full border-2 border-[#1E293B]" />
@@ -337,24 +353,27 @@ export function CharacterSelectionImproved({
               )}
             </div>
 
-            {/* Add Custom Character Button */}
+            {/* 대화 완료 인물 통계 */}
             <div className={`p-4 border-t ${
               darkMode ? 'border-[#334155]' : 'border-[#E5E7EB]'
             }`}>
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setShowAddCustom(true)}
-                className={`w-full px-4 py-3 rounded-[16px] font-bold text-sm flex items-center justify-center gap-2 ${
-                  darkMode
-                    ? 'bg-[#334155] hover:bg-[#475569] text-white'
-                    : 'bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#1F2937]'
-                }`}
-                style={{ boxShadow: 'var(--shadow-sm)' }}
-              >
-                <Plus className="w-5 h-5" strokeWidth={2} />
-                사용자 정의 인물 추가
-              </motion.button>
+              <div className={`flex items-center justify-between px-2 py-2 rounded-[12px] ${
+                darkMode ? 'bg-[#0F172A]' : 'bg-[#F9FAFB]'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <span className="text-base">⏳</span>
+                  <span className={`text-xs font-semibold ${darkMode ? 'text-[#94A3B8]' : 'text-[#6B7280]'}`}>
+                    대화 완료 인물
+                  </span>
+                </div>
+                <span className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                  chattedIds.size > 0
+                    ? 'bg-purple-100 text-purple-700'
+                    : darkMode ? 'bg-[#334155] text-[#64748B]' : 'bg-[#E5E7EB] text-[#9CA3AF]'
+                }`}>
+                  {chattedIds.size}명
+                </span>
+              </div>
             </div>
           </motion.div>
         )}
@@ -395,15 +414,12 @@ export function CharacterSelectionImproved({
                         boxShadow: `0 20px 60px -12px ${periodColors[selectedCharacter.period]}80`
                       }}
                     >
-                      {selectedCharacter.imageUrl ? (
-                        <ImageWithFallback
-                          src={selectedCharacter.imageUrl}
-                          alt={selectedCharacter.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <span className="text-6xl">{selectedCharacter.emoji}</span>
-                      )}
+                      <ImageWithFallback
+                        src={getCardImgSrc(selectedCharacter)}
+                        alt={selectedCharacter.name}
+                        className="w-full h-full object-cover"
+                        fallbackEmoji={selectedCharacter.emoji ?? "👤"}
+                      />
                     </div>
 
                     {/* Sparkle Decoration */}

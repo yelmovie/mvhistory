@@ -157,6 +157,155 @@ export function getWelcomeMessage(characterName: string): string {
   return msgs[Math.floor(Math.random() * msgs.length)];
 }
 
+// ── DALL-E 3 이미지 생성 ──────────────────────────────────────
+export interface ImageGenerationResult {
+  url: string;
+  revisedPrompt?: string;
+}
+
+/**
+ * OpenAI DALL-E 3 API로 이미지 생성
+ * @param prompt  영문 또는 한국어 프롬프트
+ * @param size    '1024x1024' | '1792x1024' | '1024x1792'
+ * @param quality 'standard' | 'hd'
+ */
+export async function generateImage(
+  prompt: string,
+  size: '1024x1024' | '1792x1024' | '1024x1792' = '1024x1024',
+  quality: 'standard' | 'hd' = 'standard',
+  apiKey?: string,
+): Promise<ImageGenerationResult> {
+  const key = apiKey || getOpenAIApiKey();
+  if (!key) throw new Error('OpenAI API 키가 설정되지 않았습니다.');
+
+  const response = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${key}`,
+    },
+    body: JSON.stringify({
+      model: 'dall-e-3',
+      prompt,
+      n: 1,
+      size,
+      quality,
+      response_format: 'url',
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    const msg = (err as { error?: { message?: string } }).error?.message;
+    if (response.status === 401) throw new Error('API 키가 올바르지 않습니다. 다시 확인해주세요.');
+    if (response.status === 429) throw new Error('API 사용 한도를 초과했습니다. 잠시 후 다시 시도해주세요.');
+    if (response.status === 400) throw new Error(msg || '프롬프트가 콘텐츠 정책에 위배됩니다. 다른 내용으로 시도해주세요.');
+    throw new Error(msg || `이미지 생성 오류: ${response.status}`);
+  }
+
+  const data = await response.json();
+  const item = data?.data?.[0];
+  if (!item?.url) throw new Error('이미지 URL을 받지 못했습니다.');
+  return { url: item.url, revisedPrompt: item.revised_prompt };
+}
+
+/**
+ * 한국어 굿즈 프롬프트를 DALL-E용 영문 프롬프트로 변환
+ */
+export async function translateGoodsPrompt(
+  koreanPrompt: string,
+  goodsType: string,
+  apiKey?: string,
+): Promise<string> {
+  const key = apiKey || getOpenAIApiKey();
+  if (!key) {
+    // API 키 없을 때 기본 번역 시도
+    return `Korean history themed ${goodsType} design: ${koreanPrompt}. 
+Flat illustration style, vibrant colors, suitable for merchandise printing, 
+clean background, high quality graphic design.`;
+  }
+
+  try {
+    const result = await chatWithOpenAI(
+      [
+        {
+          role: 'system',
+          content: `You are a professional merchandise designer specializing in Korean history themes. 
+Convert Korean design prompts into detailed English prompts for DALL-E 3 image generation.
+The output should describe a ${goodsType} design with:
+- Clear subject matter related to Korean history
+- Flat illustration or graphic design style suitable for printing on merchandise
+- Vibrant, visually appealing colors
+- Clean composition with good contrast
+- No text/letters in the image (purely visual)
+Reply with ONLY the English prompt, no explanation.`,
+        },
+        {
+          role: 'user',
+          content: `Korean prompt: "${koreanPrompt}"\nGoods type: ${goodsType}`,
+        },
+      ],
+      key,
+    );
+    return result.trim();
+  } catch {
+    return `Korean history themed ${goodsType} graphic design illustration: ${koreanPrompt}. 
+Flat design style, bold colors, suitable for merchandise printing, 
+transparent or white background, high resolution.`;
+  }
+}
+
+// ── 하루 생성 횟수 관리 (localStorage) ────────────────────────
+const DAILY_LIMIT_KEY = 'goods_daily_limit';
+const DAILY_MAX = 3;
+
+interface DailyLimit {
+  date: string;   // YYYY-MM-DD
+  count: number;
+}
+
+export function getDailyGenerationInfo(): { count: number; remaining: number; resetAt: string } {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const raw = localStorage.getItem(DAILY_LIMIT_KEY);
+    const data: DailyLimit = raw ? JSON.parse(raw) : { date: today, count: 0 };
+    if (data.date !== today) {
+      // 날짜 바뀌면 리셋
+      localStorage.setItem(DAILY_LIMIT_KEY, JSON.stringify({ date: today, count: 0 }));
+      return { count: 0, remaining: DAILY_MAX, resetAt: '내일 자정' };
+    }
+    const remaining = Math.max(0, DAILY_MAX - data.count);
+    // 다음날 자정까지 남은 시간
+    const now = new Date();
+    const midnight = new Date(now);
+    midnight.setDate(midnight.getDate() + 1);
+    midnight.setHours(0, 0, 0, 0);
+    const diffH = Math.floor((midnight.getTime() - now.getTime()) / 3600000);
+    const diffM = Math.floor(((midnight.getTime() - now.getTime()) % 3600000) / 60000);
+    const resetAt = `${diffH}시간 ${diffM}분 후`;
+    return { count: data.count, remaining, resetAt };
+  } catch {
+    return { count: 0, remaining: DAILY_MAX, resetAt: '내일' };
+  }
+}
+
+export function incrementDailyCount(): void {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const raw = localStorage.getItem(DAILY_LIMIT_KEY);
+    const data: DailyLimit = raw ? JSON.parse(raw) : { date: today, count: 0 };
+    const newData: DailyLimit = {
+      date: today,
+      count: data.date === today ? data.count + 1 : 1,
+    };
+    localStorage.setItem(DAILY_LIMIT_KEY, JSON.stringify(newData));
+  } catch { /* ignore */ }
+}
+
+export function canGenerateToday(): boolean {
+  return getDailyGenerationInfo().remaining > 0;
+}
+
 // ── ConversationManager (AIChat용) ────────────────────────────
 export class ConversationManager {
   private messages: ChatMessage[] = [];

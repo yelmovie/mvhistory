@@ -137,12 +137,11 @@ export interface QuizImageResult {
 }
 
 // ---------------------------------------------------------------------------
-// INSTANT READ — called during gameplay (pure DB read, no API call)
+// INSTANT READ — returns category-based fallback immediately (no API call)
 // ---------------------------------------------------------------------------
 /**
- * Returns the stored image instantly (DB read only).
- * If not yet prefetched, returns placeholder and enqueues background prefetch.
- * Never blocks rendering.
+ * Returns a category-based fallback image instantly.
+ * No external API calls during gameplay.
  */
 export async function getQuizImageInstant(item: {
   id: number | string;
@@ -152,125 +151,38 @@ export async function getQuizImageInstant(item: {
   imagePrompt?: string;
 }): Promise<QuizImageResult> {
   const fallback = getFallbackImageUrl(item.category);
-
-  try {
-    const res = await fetch(
-      `${FUNCTIONS_BASE}/quiz-image/by-item?quizItemId=${encodeURIComponent(String(item.id))}`,
-      {
-        headers: { Authorization: `Bearer ${ANON_KEY}` },
-        signal: AbortSignal.timeout(4_000), // very fast — only a DB read
-      },
-    );
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    if (!data.prefetched) {
-      // Not in DB yet — enqueue background prefetch (fire-and-forget)
-      enqueuePrefetch(item);
-      return { primaryUrl: fallback, publicUrl: fallback, prefetched: false };
-    }
-
-    const primaryUrl = data.primaryUrl ?? fallback;
-    return {
-      primaryUrl,
-      publicUrl: primaryUrl, // backward compat
-      alt1Url: data.alt1Url ?? null,
-      alt2Url: data.alt2Url ?? null,
-      provider: data.provider,
-      prefetched: true,
-    };
-  } catch {
-    // Network issue — use fallback and schedule prefetch silently
-    enqueuePrefetch(item);
-    return { primaryUrl: fallback, publicUrl: fallback, prefetched: false };
-  }
+  return { primaryUrl: fallback, publicUrl: fallback, prefetched: false };
 }
 
 // ---------------------------------------------------------------------------
-// BACKGROUND PREFETCH — admin/seed use or first-time encounter
+// BACKGROUND PREFETCH — no-op stubs (API removed, kept for import compat)
 // ---------------------------------------------------------------------------
-const _prefetchQueue = new Set<string>();
-
-function enqueuePrefetch(item: {
-  id: number | string;
-  question: string;
-  answer?: string;
-  category?: string;
-  imagePrompt?: string;
-}) {
-  const key = String(item.id);
-  if (_prefetchQueue.has(key)) return; // already in flight
-  _prefetchQueue.add(key);
-
-  // Fire-and-forget — does NOT block the UI
-  triggerPrefetch(item).finally(() => _prefetchQueue.delete(key));
-}
-
-export async function triggerPrefetch(item: {
+export async function triggerPrefetch(_item: {
   id: number | string;
   question: string;
   answer?: string;
   category?: string;
   imagePrompt?: string;
 }): Promise<{ primaryUrl: string; provider: string } | null> {
-  try {
-    const eraInfo = categoryToEraInfo(item.category);
-    const kw = extractKeywordsFromText(item.question, item.category);
-    const answerKw = item.answer ? extractKeywordsFromText(item.answer, item.category) : [];
-    const keywords = [...new Set([...(item.answer ? [item.answer] : []), ...answerKw, ...kw])].slice(0, 5);
-    const topic = item.answer ? `${item.answer} — ${eraInfo.topic}` : eraInfo.topic;
-
-    const res = await fetch(`${FUNCTIONS_BASE}/quiz-image/prefetch`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        quizItemId: String(item.id),
-        era: eraInfo.era,
-        topic,
-        keywords,
-      }),
-      signal: AbortSignal.timeout(20_000),
-    });
-
-    if (!res.ok) return null;
-    const data = await res.json();
-    return { primaryUrl: data.primaryUrl, provider: data.provider };
-  } catch {
-    return null;
-  }
+  return null;
 }
 
-/**
- * Prefetch N upcoming questions in the background.
- * Call this right after the user starts the quiz.
- */
 export function prefetchUpcoming(
-  items: Array<{ id: number | string; question: string; answer?: string; category?: string }>,
-  count = 5,
+  _items: Array<{ id: number | string; question: string; answer?: string; category?: string }>,
+  _count = 5,
 ) {
-  items.slice(0, count).forEach((item) => enqueuePrefetch(item));
+  // no-op: prefetch endpoints removed
 }
 
 // ---------------------------------------------------------------------------
-// Admin: swap image (cycle alternates)
+// Admin: swap image — no-op stub
 // ---------------------------------------------------------------------------
-export async function swapQuizImage(quizItemId: string | number): Promise<{
+export async function swapQuizImage(_quizItemId: string | number): Promise<{
   primaryUrl: string;
   alt1Url: string | null;
   alt2Url: string | null;
 } | null> {
-  try {
-    const res = await fetch(`${FUNCTIONS_BASE}/quiz-image/swap`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ quizItemId: String(quizItemId) }),
-    });
-    if (!res.ok) return null;
-    return await res.json();
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,25 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { 
-  Lightbulb, Send, ArrowLeft, Image as ImageIcon, 
-  CheckCircle, XCircle, AlertCircle, ChevronRight, 
+import {
+  Lightbulb, Send, ArrowLeft,
+  CheckCircle, XCircle, AlertCircle,
   Home, Check, X, ArrowRight, Loader2
 } from "lucide-react";
 import confetti from "canvas-confetti";
-import { imageCacheService } from "../utils/imageCache";
-import {
-  getQuizImageInstant,
-  getFallbackImageUrl,
-  prefetchUpcoming,
-  type QuizImageResult,
-} from "../utils/quizImageService";
 import { checkSpellingSimilarity } from "../data/quizData";
 import { PointsBadge } from "./gamification/PointsBadge";
 import { LevelIndicator } from "./gamification/LevelIndicator";
 import { ExpBar } from "./gamification/ExpBar";
 import { RewardAnimation } from "./gamification/RewardAnimation";
-import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { generateQuizHint } from "../utils/openaiApi";
+
 const _supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ngvsfcekfzzykvcsjktp.supabase.co';
 const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
 
@@ -35,7 +28,6 @@ interface QuizScreenProps {
     imagePrompt?: string;
     category?: string;
   };
-  /** Id of the NEXT question — used only for preloading its image, no rendering */
   nextQuestionId?: number;
   currentQuestion: number;
   totalQuestions: number;
@@ -53,7 +45,6 @@ interface QuizScreenProps {
 
 export function QuizScreen({
   question,
-  nextQuestionId,
   currentQuestion,
   totalQuestions,
   onSubmitAnswer,
@@ -65,218 +56,29 @@ export function QuizScreen({
   const [userAnswer, setUserAnswer] = useState("");
   const [currentHint, setCurrentHint] = useState(0);
   const [showHints, setShowHints] = useState(false);
-  const [questionImage, setQuestionImage] = useState<string>("");
-  const [imageLoading, setImageLoading] = useState(true);
-  const [nextImageUrl, setNextImageUrl] = useState<string | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
   const [submittedAnswer, setSubmittedAnswer] = useState("");
   const [spellingError, setSpellingError] = useState(false);
   const [spellingHint, setSpellingHint] = useState("");
   const [selectedOption, setSelectedOption] = useState<string>("");
-  
-  // AI-generated hints
+
+  // AI 힌트
   const [generatedHints, setGeneratedHints] = useState<string[]>([]);
   const [hintLoading, setHintLoading] = useState(false);
-  
-  // Gamification states
+
+  // 게임화 상태
   const [points, setPoints] = useState(2850);
-  const [level, setLevel] = useState(5);
-  const [exp, setExp] = useState(350);
+  const [level] = useState(5);
+  const [exp] = useState(350);
   const [maxExp] = useState(500);
   const [showReward, setShowReward] = useState(false);
   const [rewardType, setRewardType] = useState<'correct' | 'levelup' | 'streak'>('correct');
   const [earnedPoints, setEarnedPoints] = useState(0);
 
-  // Progress percentage
   const progressPercent = Math.round((currentQuestion / totalQuestions) * 100);
 
-  // Extract keywords from question for image search
-  const extractKeywordsFromQuestion = (questionText: string, category: string): string => {
-    // Map categories to Korean search terms for better Google Image results
-    const categoryMap: Record<string, string> = {
-      '고조선': '고조선 단군 청동기',
-      '삼국시대': '삼국시대 신라 불국사',
-      '고려': '고려 청자 팔만대장경',
-      '조선': '조선 궁궐 경복궁',
-      '근현대': '한국 독립 근대',
-      '인물': '한국 역사 인물'
-    };
-
-    // Extract key historical terms - prioritize Korean for better search results
-    const historicalTerms = [
-      { kr: '고조선', query: '고조선 단군' },
-      { kr: '단군', query: '단군왕검 고조선' },
-      { kr: '고구려', query: '고구려 광개토대왕' },
-      { kr: '백제', query: '백제 석탑' },
-      { kr: '신라', query: '신라 불국사 첨성대' },
-      { kr: '통일신라', query: '신라 석굴암' },
-      { kr: '고려', query: '고려 청자' },
-      { kr: '조선', query: '조선 궁궐' },
-      { kr: '세종', query: '세종대왕 한글' },
-      { kr: '한글', query: '훈민정음 한글' },
-      { kr: '불국사', query: '불국사 석가탑' },
-      { kr: '첨성대', query: '첨성대 신라' },
-      { kr: '석굴암', query: '석굴암 불상' },
-      { kr: '거북선', query: '거북선 이순신' },
-      { kr: '이순신', query: '이순신 거북선' },
-      { kr: '독립', query: '대한독립 만세' },
-      { kr: '3.1운동', query: '3.1운동 만세' },
-      { kr: '6.25', query: '한국전쟁' },
-      { kr: '한국전쟁', query: '6.25전쟁' },
-      { kr: '임진왜란', query: '임진왜란 조선' },
-      { kr: '병자호란', query: '병자호란 조선' },
-      { kr: '팔만대장경', query: '팔만대장경 고려' },
-      { kr: '청자', query: '고려청자' },
-      { kr: '백자', query: '조선백자' },
-      { kr: '한옥', query: '한옥 전통가옥' },
-      { kr: '경복궁', query: '경복궁 광화문' },
-      { kr: '창덕궁', query: '창덕궁 비원' },
-      { kr: '덕수궁', query: '덕수궁 석조전' },
-      { kr: '훈민정음', query: '훈민정음 세종대왕' },
-      { kr: '직지심체요절', query: '직지심경 금속활자' },
-      { kr: '금속활자', query: '금속활자 인쇄' },
-      { kr: '측우기', query: '측우기 조선' },
-      { kr: '앙부일구', query: '앙부일구 해시계' },
-      { kr: '혼천의', query: '혼천의 천문기구' }
-    ];
-
-    // Check if question contains specific terms
-    for (const term of historicalTerms) {
-      if (questionText.includes(term.kr)) {
-        return term.query;
-      }
-    }
-
-    // Use category-based search
-    return categoryMap[category] || '한국 전통 문화재';
-  };
-
-  // Get fallback image based on category
-  const getFallbackImage = (category: string | undefined, questionText: string): string => {
-    // Map categories and keywords to Unsplash search URLs
-    const categoryImages: Record<string, string> = {
-      '고조선': 'https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=1200&q=80',
-      '삼국시대': 'https://images.unsplash.com/photo-1578469550956-0e16b69c6a3d?w=1200&q=80',
-      '고려': 'https://images.unsplash.com/photo-1583149577728-9ba4bb93b0b0?w=1200&q=80',
-      '조선': 'https://images.unsplash.com/photo-1693928105595-b323b02791ff?w=1200&q=80',
-      '근현대': 'https://images.unsplash.com/photo-1583562835057-b06c1c4d0c3f?w=1200&q=80',
-      '인물': 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=1200&q=80'
-    };
-
-    // Check keywords in question
-    if (questionText.includes('궁궐') || questionText.includes('경복궁')) {
-      return 'https://images.unsplash.com/photo-1693928105595-b323b02791ff?w=1200&q=80';
-    } else if (questionText.includes('불국사') || questionText.includes('석굴암')) {
-      return 'https://images.unsplash.com/photo-1578469550956-0e16b69c6a3d?w=1200&q=80';
-    } else if (questionText.includes('한옥') || questionText.includes('전통')) {
-      return 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=1200&q=80';
-    } else if (questionText.includes('독립') || questionText.includes('만세')) {
-      return 'https://images.unsplash.com/photo-1583562835057-b06c1c4d0c3f?w=1200&q=80';
-    }
-
-    // Use category-based image or default Korean traditional image
-    return categoryImages[category || ''] || 'https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=1200&q=80';
-  };
-
-  // Instant image load — reads from DB only, no API generation at play time
-  useEffect(() => {
-    // Reset UI state for new question
-    setShowResult(false);
-    setIsCorrect(false);
-    setSubmittedAnswer("");
-    setUserAnswer("");
-    setSelectedOption("");
-    setCurrentHint(0);
-    setShowHints(false);
-    setSpellingError(false);
-    setSpellingHint("");
-    setGeneratedHints([]);
-    setHintLoading(false);
-
-    // Show category placeholder immediately — never blank
-    setQuestionImage(getFallbackImageUrl(question.category));
-    setImageLoading(true);
-
-    let cancelled = false;
-
-    getQuizImageInstant({
-      id: question.id,
-      question: question.question,
-      answer: question.answer,
-      category: question.category,
-      imagePrompt: (question as any).imagePrompt,
-    }).then((result) => {
-      if (!cancelled) {
-        setQuestionImage(result.primaryUrl);
-        // imageLoading stays true until <img onLoad> fires
-      }
-    }).catch(() => {
-      // fallback already set above
-      if (!cancelled) setImageLoading(false);
-    });
-
-    return () => { cancelled = true; };
-  }, [question.id]);
-
-  // Preload next question image via <link rel="preload"> injected into <head>
-  useEffect(() => {
-    if (!nextQuestionId) { setNextImageUrl(null); return; }
-    let cancelled = false;
-    getQuizImageInstant({ id: nextQuestionId, question: "", category: question.category }).then((r) => {
-      if (cancelled || !r.prefetched) return;
-      setNextImageUrl(r.primaryUrl);
-      // Inject preload link tag into document head
-      const link = document.createElement("link");
-      link.rel = "preload";
-      link.as = "image";
-      link.href = r.primaryUrl;
-      link.setAttribute("data-quiz-preload", String(nextQuestionId));
-      document.head.appendChild(link);
-    }).catch(() => {});
-    return () => {
-      cancelled = true;
-      // Remove old preload link when question changes
-      document.querySelectorAll(`link[data-quiz-preload="${nextQuestionId}"]`).forEach((el) => el.remove());
-    };
-  }, [nextQuestionId]);
-
-  const handleShowHint = async () => {
-    if (currentHint < 3) { // 최대 3개의 힌트
-      setHintLoading(true);
-      try {
-        // Use category from question or extract from text
-        const category = question.category || extractCategoryFromQuestion(question.question);
-        
-        // AI로 힌트 생성
-        const newHint = await generateQuizHint(
-          question.question,
-          question.answer,
-          currentHint + 1, // 1: 광범위, 2: 중간, 3: 구체적
-          category
-        );
-        
-        setGeneratedHints(prev => [...prev, newHint]);
-        setCurrentHint(currentHint + 1);
-        setShowHints(true);
-      } catch (error) {
-        console.error('힌트 생성 실패:', error);
-        // 오류 시 기본 힌트 사용
-        const fallbackHints = [
-          `이 문제는 한국사와 관련이 있어요. 천천히 생각해보세요!`,
-          `답은 "${question.answer.length}글자"입니다. 조금만 더 생각해보세요!`,
-          `정답은 "${question.answer[0]}"로 시작하는 ${question.answer.length}글자 단어예요!`
-        ];
-        setGeneratedHints(prev => [...prev, fallbackHints[currentHint]]);
-        setCurrentHint(currentHint + 1);
-        setShowHints(true);
-      } finally {
-        setHintLoading(false);
-      }
-    }
-  };
-
-  // Extract category from question text as fallback
+  // 카테고리 자동 추출
   const extractCategoryFromQuestion = (questionText: string): string => {
     if (questionText.includes('고조선') || questionText.includes('단군')) return '고조선';
     if (questionText.includes('고구려') || questionText.includes('백제') || questionText.includes('신라')) return '삼국시대';
@@ -286,35 +88,56 @@ export function QuizScreen({
     return '한국사';
   };
 
+  const handleShowHint = async () => {
+    if (currentHint >= 3) return;
+    setHintLoading(true);
+    try {
+      const category = question.category || extractCategoryFromQuestion(question.question);
+      const newHint = await generateQuizHint(
+        question.question,
+        question.answer,
+        currentHint + 1,
+        category
+      );
+      setGeneratedHints(prev => [...prev, newHint]);
+      setCurrentHint(currentHint + 1);
+      setShowHints(true);
+    } catch {
+      const fallbackHints = [
+        `이 문제는 한국사와 관련이 있어요. 천천히 생각해보세요!`,
+        `답은 "${question.answer.length}글자"입니다. 조금만 더 생각해보세요!`,
+        `정답은 "${question.answer[0]}"로 시작하는 ${question.answer.length}글자 단어예요!`
+      ];
+      setGeneratedHints(prev => [...prev, fallbackHints[currentHint]]);
+      setCurrentHint(currentHint + 1);
+      setShowHints(true);
+    } finally {
+      setHintLoading(false);
+    }
+  };
+
   const calculatePoints = (hintsUsed: number) => {
-    const basePoints = 70; // Elementary school level
+    const basePoints = 70;
     const hintPenalty = hintsUsed * 10;
     return Math.max(basePoints - hintPenalty, 10);
   };
 
   const handleSubmit = () => {
     const answer = question.type === 'multiple-choice' ? selectedOption : userAnswer;
-    
     if (!answer.trim()) return;
 
     setSubmittedAnswer(answer);
-    
     const correct = answer.trim().toLowerCase() === question.answer.trim().toLowerCase();
-    
+
     if (correct) {
       setIsCorrect(true);
       setShowResult(true);
       setSpellingError(false);
-      
-      // Calculate and award points
       const earnedPts = calculatePoints(currentHint);
       setEarnedPoints(earnedPts);
       setPoints(prev => prev + earnedPts);
-      
       setRewardType('correct');
       setShowReward(true);
-      
-      // Trigger confetti effect for correct answer
       confetti({
         particleCount: 100,
         spread: 70,
@@ -323,7 +146,6 @@ export function QuizScreen({
       });
     } else if (question.type === 'short-answer') {
       const { isSimilar } = checkSpellingSimilarity(answer, question.answer);
-      
       if (isSimilar) {
         setSpellingError(true);
         setSpellingHint(`거의 맞았어요! 철자를 확인해보세요. 정답은 "${question.answer}"입니다. 다시 입력해주세요!`);
@@ -341,12 +163,10 @@ export function QuizScreen({
   };
 
   const handleNext = async () => {
-    // Mark question as completed if answered correctly
     if (isCorrect) {
       try {
         const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
         const userId = currentUser.email || 'guest';
-
         await fetch(
           `${_supabaseUrl}/functions/v1/make-server-48be01a5/quiz/completed`,
           {
@@ -358,13 +178,12 @@ export function QuizScreen({
             body: JSON.stringify({
               userId,
               questionId: question.id,
-              period: (question as any).period || 'unknown'
+              period: (question as { period?: string }).period || 'unknown'
             })
           }
         );
-        console.log('Question marked as completed:', question.id);
-      } catch (error) {
-        console.error('Failed to mark question as completed:', error);
+      } catch {
+        // 오류 무시
       }
     }
 
@@ -376,6 +195,7 @@ export function QuizScreen({
     setSelectedOption("");
     setCurrentHint(0);
     setShowHints(false);
+    setGeneratedHints([]);
     setSpellingError(false);
     setSpellingHint("");
   };
@@ -387,22 +207,41 @@ export function QuizScreen({
     setSpellingHint("");
   };
 
-  // Get option status
   const getOptionStatus = (option: string): 'default' | 'selected' | 'correct' | 'wrong' => {
-    if (!showResult) {
-      return selectedOption === option ? 'selected' : 'default';
-    }
+    if (!showResult) return selectedOption === option ? 'selected' : 'default';
     if (option === question.answer) return 'correct';
     if (option === selectedOption && option !== question.answer) return 'wrong';
     return 'default';
   };
 
+  // 카테고리별 배경 색상
+  const categoryGradient: Record<string, string> = {
+    '고조선': 'from-amber-50 to-yellow-50',
+    '삼국시대': 'from-emerald-50 to-green-50',
+    '고려': 'from-cyan-50 to-sky-50',
+    '조선': 'from-red-50 to-orange-50',
+    '근현대': 'from-indigo-50 to-purple-50',
+  };
+  const categoryGradientDark: Record<string, string> = {
+    '고조선': 'from-amber-900/20 to-yellow-900/10',
+    '삼국시대': 'from-emerald-900/20 to-green-900/10',
+    '고려': 'from-cyan-900/20 to-sky-900/10',
+    '조선': 'from-red-900/20 to-orange-900/10',
+    '근현대': 'from-indigo-900/20 to-purple-900/10',
+  };
+
+  const cat = question.category || extractCategoryFromQuestion(question.question);
+  const cardGradient = darkMode
+    ? (categoryGradientDark[cat] ?? 'from-gray-800/50 to-gray-900/30')
+    : (categoryGradient[cat] ?? 'from-white to-gray-50');
+
   return (
     <div className={`min-h-screen transition-colors ${
-      darkMode ? 'bg-[#0F172A]' : 'bg-[#FEF7FF]'
-    } ${viewMode === 'mobile' ? 'p-4 py-6' : 'p-6'}`}>
-      {/* Reward Animations */}
-      <RewardAnimation 
+      darkMode ? 'bg-[#0F172A]' : 'bg-[#F5F3FF]'
+    } ${viewMode === 'mobile' ? 'p-4 py-6' : 'p-4 sm:p-6'}`}>
+
+      {/* 보상 애니메이션 */}
+      <RewardAnimation
         type={rewardType}
         points={earnedPoints}
         show={showReward}
@@ -410,36 +249,26 @@ export function QuizScreen({
         darkMode={darkMode}
       />
 
-      {/* Gamification Header */}
-      <div className="max-w-5xl mx-auto mb-6">
-        <div className={`${
-          darkMode ? 'bg-[#1E293B]' : 'bg-white'
-        } rounded-[20px] p-4`}
-          style={{ boxShadow: 'var(--shadow-md)' }}
-        >
-          <div className={`flex items-center justify-between ${
-            viewMode === 'mobile' ? 'flex-col gap-4' : 'gap-6'
-          }`}>
-            {/* Left: Level & Points */}
-            <div className={`flex items-center gap-4 ${
-              viewMode === 'mobile' ? 'w-full justify-between' : ''
-            }`}>
-              <LevelIndicator 
+      {/* 게임화 헤더 */}
+      <div className="max-w-3xl mx-auto mb-4">
+        <div className={`${darkMode ? 'bg-[#1E293B]' : 'bg-white'} rounded-2xl p-3 sm:p-4`}
+          style={{ boxShadow: 'var(--shadow-md)' }}>
+          <div className={`flex items-center justify-between ${viewMode === 'mobile' ? 'flex-col gap-3' : 'gap-4'}`}>
+            <div className={`flex items-center gap-3 ${viewMode === 'mobile' ? 'w-full justify-between' : ''}`}>
+              <LevelIndicator
                 level={level}
                 userName="학습자"
                 size={viewMode === 'mobile' ? 'small' : 'medium'}
                 darkMode={darkMode}
               />
-              <PointsBadge 
+              <PointsBadge
                 points={points}
                 size={viewMode === 'mobile' ? 'small' : 'medium'}
                 darkMode={darkMode}
               />
             </div>
-
-            {/* Right: EXP Bar */}
             <div className={viewMode === 'mobile' ? 'w-full' : 'flex-1 max-w-xs'}>
-              <ExpBar 
+              <ExpBar
                 currentExp={exp}
                 maxExp={maxExp}
                 showLabel={viewMode !== 'mobile'}
@@ -451,69 +280,68 @@ export function QuizScreen({
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-5xl mx-auto">
-        {/* Header Controls */}
+      {/* 메인 컨텐츠 */}
+      <div className="max-w-3xl mx-auto">
+
+        {/* 상단 컨트롤 */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
               onClick={onBack}
-              className={`flex items-center gap-2 px-4 py-2 rounded-[16px] font-bold ${
-                darkMode 
-                  ? 'bg-[#1E293B] hover:bg-[#334155] text-white' 
-                  : 'bg-white hover:bg-[#F9FAFB] text-[#1F2937]'
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-bold text-sm ${
+                darkMode
+                  ? 'bg-[#1E293B] hover:bg-[#334155] text-white'
+                  : 'bg-white hover:bg-gray-50 text-gray-800'
               }`}
               style={{ boxShadow: 'var(--shadow-sm)' }}
             >
               <ArrowLeft className="w-4 h-4" strokeWidth={2} />
-              <span className="text-sm">뒤로</span>
+              뒤로
             </motion.button>
 
             {onHome && (
               <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
+                whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
                 onClick={onHome}
-                className="p-2 rounded-[16px] transition-all text-white"
-                style={{
-                  background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-                  boxShadow: 'var(--shadow-primary)'
-                }}
+                className="p-2 rounded-xl text-white"
+                style={{ background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)', boxShadow: 'var(--shadow-primary)' }}
               >
                 <Home className="w-4 h-4" strokeWidth={2} />
               </motion.button>
             )}
           </div>
+
+          {/* 카테고리 뱃지 */}
+          {cat && (
+            <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+              darkMode ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'
+            }`}>
+              {cat}
+            </span>
+          )}
         </div>
 
-        {/* Progress Bar with Percentage */}
-        <motion.div 
+        {/* 진행률 바 */}
+        <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
+          className="mb-5"
         >
-          <div className="flex items-center justify-between mb-2">
-            <span className={`text-sm font-bold ${
-              darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
-            }`}>
+          <div className="flex items-center justify-between mb-1.5">
+            <span className={`text-sm font-bold ${darkMode ? 'text-[#CBD5E1]' : 'text-gray-500'}`}>
               문제 {currentQuestion} / {totalQuestions}
             </span>
-            <span className={`text-sm font-black ${
-              darkMode ? 'text-[#A5B4FC]' : 'text-[#6366F1]'
-            }`}>
+            <span className={`text-sm font-black ${darkMode ? 'text-[#A5B4FC]' : 'text-[#6366F1]'}`}>
               {progressPercent}%
             </span>
           </div>
-          <div className={`h-3 rounded-full overflow-hidden ${
-            darkMode ? 'bg-[#334155]' : 'bg-[#E5E7EB]'
-          }`}>
+          <div className={`h-3 rounded-full overflow-hidden ${darkMode ? 'bg-[#334155]' : 'bg-gray-200'}`}>
             <motion.div
               className="h-full rounded-full"
               style={{
                 background: 'linear-gradient(90deg, #6366F1 0%, #EC4899 100%)',
-                boxShadow: '0 0 12px rgba(99, 102, 241, 0.5)'
+                boxShadow: '0 0 12px rgba(99,102,241,0.5)'
               }}
               initial={{ width: 0 }}
               animate={{ width: `${progressPercent}%` }}
@@ -522,332 +350,290 @@ export function QuizScreen({
           </div>
         </motion.div>
 
-        {/* Question Card */}
+        {/* 문제 카드 */}
         <motion.div
           key={question.id}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className={`${
-            darkMode ? 'bg-[#1E293B]' : 'bg-white'
-          } rounded-[24px] p-6 sm:p-8`}
-          style={{ boxShadow: 'var(--shadow-lg)' }}
+          className={`rounded-3xl overflow-hidden bg-gradient-to-br ${cardGradient}`}
+          style={{
+            boxShadow: 'var(--shadow-lg)',
+            border: darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)'
+          }}
         >
-          {/* Question Image — instant render with skeleton placeholder */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2 }}
-            className={`relative w-full aspect-video rounded-[20px] overflow-hidden mb-6 border-4 ${
-              darkMode ? 'border-[#334155]' : 'border-[#E5E7EB]'
-            }`}
-            style={{ boxShadow: '0 8px 32px -8px rgba(0, 0, 0, 0.2)' }}
-          >
-            {/* Animated skeleton — shown until image fires onLoad */}
-            {imageLoading && (
-              <div className={`absolute inset-0 z-10 ${darkMode ? 'bg-[#1E293B]' : 'bg-[#F3F4F6]'}`}>
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_1.4s_infinite]"
-                  style={{ backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite linear' }} />
-                <style>{`@keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }`}</style>
+          {/* 문제 텍스트 영역 */}
+          <div className="px-6 sm:px-8 pt-8 pb-6">
+            {/* 문제 번호 */}
+            <div className="flex items-center gap-2 mb-4">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center text-white text-sm font-black flex-shrink-0"
+                style={{ background: 'linear-gradient(135deg, #6366F1, #8B5CF6)' }}
+              >
+                Q
+              </div>
+              <span className={`text-xs font-bold ${darkMode ? 'text-gray-400' : 'text-gray-400'}`}>
+                문제 {currentQuestion}
+              </span>
+            </div>
+
+            {/* 문제 본문 */}
+            <h2 className={`text-xl sm:text-2xl font-black leading-relaxed mb-6 ${
+              darkMode ? 'text-white' : 'text-gray-900'
+            }`}>
+              {question.question}
+            </h2>
+
+            {/* ── 객관식 보기 ── */}
+            {question.type === 'multiple-choice' && question.options && (
+              <div className="space-y-3 mb-6">
+                {question.options.map((option, index) => {
+                  const status = getOptionStatus(option);
+                  return (
+                    <motion.button
+                      key={index}
+                      whileHover={!showResult ? { scale: 1.02, x: 4 } : {}}
+                      whileTap={!showResult ? { scale: 0.98 } : {}}
+                      onClick={() => handleOptionSelect(option)}
+                      disabled={showResult}
+                      className={`w-full p-4 rounded-2xl text-left transition-all border-2 font-medium flex items-center justify-between ${
+                        status === 'selected'
+                          ? 'bg-[#6366F1] border-[#6366F1] text-white'
+                          : status === 'correct'
+                            ? 'bg-[#10B981] border-[#10B981] text-white'
+                            : status === 'wrong'
+                              ? 'bg-[#EF4444] border-[#EF4444] text-white'
+                              : darkMode
+                                ? 'bg-gray-800/70 border-gray-700 text-white hover:bg-gray-700 hover:border-[#6366F1]'
+                                : 'bg-white border-gray-200 text-gray-800 hover:bg-[#EEF2FF] hover:border-[#6366F1]'
+                      } ${showResult ? 'cursor-not-allowed' : 'cursor-pointer'}`}
+                      style={
+                        status === 'selected'
+                          ? { boxShadow: '0 8px 24px -8px rgba(99,102,241,0.6)' }
+                          : status === 'correct'
+                            ? { boxShadow: '0 8px 24px -8px rgba(16,185,129,0.6)' }
+                            : status === 'wrong'
+                              ? { boxShadow: '0 8px 24px -8px rgba(239,68,68,0.6)' }
+                              : {}
+                      }
+                    >
+                      <span>
+                        <span className="font-black mr-3 text-lg">{index + 1}.</span>
+                        {option}
+                      </span>
+                      {status === 'correct' && (
+                        <motion.div initial={{ scale: 0, rotate: -180 }} animate={{ scale: 1, rotate: 0 }}>
+                          <Check className="w-6 h-6" strokeWidth={3} />
+                        </motion.div>
+                      )}
+                      {status === 'wrong' && (
+                        <motion.div initial={{ scale: 0, rotate: 180 }} animate={{ scale: 1, rotate: 0 }}>
+                          <X className="w-6 h-6" strokeWidth={3} />
+                        </motion.div>
+                      )}
+                    </motion.button>
+                  );
+                })}
               </div>
             )}
 
-            {/* Eager-load image — shows over skeleton once loaded */}
-            {questionImage && (
-              <ImageWithFallback
-                src={questionImage}
-                alt="Question illustration"
-                className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
-                loading="eager"
-                onLoad={() => setImageLoading(false)}
-                onError={() => setImageLoading(false)}
-              />
+            {/* ── 단답형 입력 ── */}
+            {question.type === 'short-answer' && !showResult && (
+              <div className="mb-6">
+                <input
+                  type="text"
+                  value={userAnswer}
+                  onChange={e => {
+                    setUserAnswer(e.target.value);
+                    setSpellingError(false);
+                    setSpellingHint("");
+                  }}
+                  onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                  placeholder="답을 입력하세요..."
+                  className={`w-full px-5 py-4 rounded-2xl border-2 text-lg font-medium transition-all focus:outline-none ${
+                    darkMode
+                      ? 'bg-gray-800/70 border-gray-700 text-white placeholder-gray-500 focus:border-[#6366F1]'
+                      : 'bg-white border-gray-200 text-gray-900 placeholder-gray-400 focus:border-[#6366F1]'
+                  }`}
+                  style={{ boxShadow: 'var(--shadow-sm)' }}
+                />
+              </div>
             )}
-          </motion.div>
 
-          {/* Question Text */}
-          <h2 className={`text-xl sm:text-2xl font-black mb-6 leading-relaxed ${
-            darkMode ? 'text-white' : 'text-[#1F2937]'
-          }`}>
-            {question.question}
-          </h2>
-
-          {/* Multiple Choice Options */}
-          {question.type === 'multiple-choice' && question.options && (
-            <div className="space-y-3 mb-6">
-              {question.options.map((option, index) => {
-                const status = getOptionStatus(option);
-                
-                return (
-                  <motion.button
-                    key={index}
-                    whileHover={!showResult ? { scale: 1.02, x: 4 } : {}}
-                    whileTap={!showResult ? { scale: 0.98 } : {}}
-                    onClick={() => handleOptionSelect(option)}
-                    disabled={showResult}
-                    className={`w-full p-4 rounded-[16px] text-left transition-all border-2 font-medium flex items-center justify-between ${
-                      status === 'selected'
-                        ? 'bg-[#6366F1] border-[#6366F1] text-white'
-                        : status === 'correct'
-                          ? 'bg-[#10B981] border-[#10B981] text-white'
-                          : status === 'wrong'
-                            ? 'bg-[#EF4444] border-[#EF4444] text-white'
-                            : darkMode
-                              ? 'bg-[#334155] border-[#475569] text-white hover:bg-[#A5B4FC]/20 hover:border-[#6366F1]'
-                              : 'bg-white border-[#D1D5DB] text-[#1F2937] hover:bg-[#EEF2FF] hover:border-[#6366F1]'
-                    } ${showResult ? 'cursor-not-allowed' : 'cursor-pointer'}`}
-                    style={
-                      status === 'selected' 
-                        ? { boxShadow: '0 8px 24px -8px rgba(99, 102, 241, 0.6)' }
-                        : status === 'correct'
-                          ? { boxShadow: '0 8px 24px -8px rgba(16, 185, 129, 0.6)' }
-                          : status === 'wrong'
-                            ? { boxShadow: '0 8px 24px -8px rgba(239, 68, 68, 0.6)' }
-                            : {}
-                    }
-                  >
-                    <span>
-                      <span className="font-black mr-3 text-lg">{index + 1}.</span>
-                      {option}
-                    </span>
-                    {status === 'correct' && (
-                      <motion.div
-                        initial={{ scale: 0, rotate: -180 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                      >
-                        <Check className="w-6 h-6" strokeWidth={3} />
-                      </motion.div>
-                    )}
-                    {status === 'wrong' && (
-                      <motion.div
-                        initial={{ scale: 0, rotate: 180 }}
-                        animate={{ scale: 1, rotate: 0 }}
-                      >
-                        <X className="w-6 h-6" strokeWidth={3} />
-                      </motion.div>
-                    )}
-                  </motion.button>
-                );
-              })}
-            </div>
-          )}
-
-          {/* Short Answer Input */}
-          {question.type === 'short-answer' && !showResult && (
-            <div className="mb-6">
-              <input
-                type="text"
-                value={userAnswer}
-                onChange={(e) => {
-                  setUserAnswer(e.target.value);
-                  setSpellingError(false);
-                  setSpellingHint("");
-                }}
-                onKeyPress={(e) => e.key === 'Enter' && handleSubmit()}
-                placeholder="답을 입력하세요..."
-                className={`w-full px-6 py-4 rounded-[16px] border-2 text-lg font-medium transition-all ${
-                  darkMode
-                    ? 'bg-[#334155] border-[#475569] text-white placeholder-[#94A3B8] focus:border-[#6366F1]'
-                    : 'bg-white border-[#D1D5DB] text-[#1F2937] placeholder-[#9CA3AF] focus:border-[#6366F1]'
-                } focus:outline-none`}
-                style={{ boxShadow: 'var(--shadow-sm)' }}
-              />
-            </div>
-          )}
-
-          {/* Spelling Error Hint */}
-          <AnimatePresence>
-            {spellingError && spellingHint && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                className={`mb-6 p-4 rounded-[16px] border-2 ${
-                  darkMode
-                    ? 'bg-[#FBBF24]/20 border-[#FBBF24]/50 text-[#FDE68A]'
-                    : 'bg-[#FEF3C7] border-[#FBBF24] text-[#92400E]'
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" strokeWidth={2} />
-                  <p className="text-sm font-medium">{spellingHint}</p>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Hint Button - Yellow Background + Lightbulb Icon */}
-          {!showResult && (
-            <div className="mb-6">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleShowHint}
-                disabled={currentHint >= 3 || hintLoading}
-                className={`w-full sm:w-auto px-6 py-3 rounded-[16px] flex items-center gap-2 font-bold transition-all ${
-                  currentHint >= 3 || hintLoading
-                    ? darkMode
-                      ? 'bg-[#334155] text-[#64748B] cursor-not-allowed'
-                      : 'bg-[#E5E7EB] text-[#9CA3AF] cursor-not-allowed'
-                    : 'bg-[#FBBF24] hover:bg-[#F59E0B] text-white'
-                }`}
-                style={currentHint < 3 && !hintLoading ? { 
-                  boxShadow: '0 8px 24px -8px rgba(251, 191, 36, 0.6)' 
-                } : {}}
-              >
-                {hintLoading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" strokeWidth={2} />
-                    AI 힌트 생성 중...
-                  </>
-                ) : (
-                  <>
-                    <Lightbulb className="w-5 h-5" strokeWidth={2} fill={currentHint < 3 ? "white" : "none"} />
-                    AI 힌트 보기 ({currentHint}/3)
-                  </>
-                )}
-              </motion.button>
-
-              <AnimatePresence>
-                {showHints && currentHint > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    exit={{ opacity: 0, height: 0 }}
-                    className="mt-4 space-y-2"
-                  >
-                    {generatedHints.map((hint, index) => (
-                      <motion.div
-                        key={index}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: index * 0.1 }}
-                        className={`p-4 rounded-[12px] border ${
-                          darkMode
-                            ? 'bg-[#FBBF24]/10 border-[#FBBF24]/30 text-[#FDE68A]'
-                            : 'bg-[#FEF3C7] border-[#FBBF24]/50 text-[#92400E]'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={`flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                            darkMode ? 'bg-[#FBBF24] text-[#1F2937]' : 'bg-[#FBBF24] text-white'
-                          }`}>
-                            {index + 1}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-1">
-                              <Lightbulb className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
-                              <span className={`text-xs font-semibold ${
-                                darkMode ? 'text-[#FDE68A]' : 'text-[#92400E]'
-                              }`}>
-                                {index === 0 ? '광범위한 힌트' : index === 1 ? '중간 힌트' : '구체적인 힌트'}
-                              </span>
-                            </div>
-                            <span className="text-sm font-medium leading-relaxed">{hint}</span>
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
-
-          {/* Result Message */}
-          <AnimatePresence>
-            {showResult && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className={`mb-6 p-6 rounded-[20px] border-2 ${
-                  isCorrect
-                    ? darkMode
-                      ? 'bg-[#10B981]/20 border-[#10B981]/50'
-                      : 'bg-[#D1FAE5] border-[#10B981]'
-                    : darkMode
-                      ? 'bg-[#EF4444]/20 border-[#EF4444]/50'
-                      : 'bg-[#FEE2E2] border-[#EF4444]'
-                }`}
-              >
-                <div className="flex items-start gap-4">
-                  {isCorrect ? (
-                    <CheckCircle className={`w-8 h-8 flex-shrink-0 ${
-                      darkMode ? 'text-[#6EE7B7]' : 'text-[#10B981]'
-                    }`} strokeWidth={2} />
-                  ) : (
-                    <XCircle className={`w-8 h-8 flex-shrink-0 ${
-                      darkMode ? 'text-[#FCA5A5]' : 'text-[#EF4444]'
-                    }`} strokeWidth={2} />
-                  )}
-                  <div>
-                    <h3 className={`text-lg font-bold mb-2 ${
-                      isCorrect
-                        ? darkMode ? 'text-[#6EE7B7]' : 'text-[#10B981]'
-                        : darkMode ? 'text-[#FCA5A5]' : 'text-[#EF4444]'
-                    }`}>
-                      {isCorrect ? '정답입니다! 🎉' : '아쉽지만 오답이에요 😢'}
-                    </h3>
-                    <p className={`text-sm mb-3 ${
-                      darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
-                    }`}>
-                      정답: <span className="font-bold">{question.answer}</span>
-                    </p>
-                    {question.explanation && (
-                      <p className={`text-sm ${
-                        darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
-                      }`}>
-                        {question.explanation}
-                      </p>
-                    )}
+            {/* ── 철자 오류 경고 ── */}
+            <AnimatePresence>
+              {spellingError && spellingHint && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className={`mb-5 p-4 rounded-2xl border-2 ${
+                    darkMode
+                      ? 'bg-amber-900/30 border-amber-500/50 text-amber-300'
+                      : 'bg-amber-50 border-amber-300 text-amber-800'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" strokeWidth={2} />
+                    <p className="text-sm font-medium">{spellingHint}</p>
                   </div>
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-          {/* Action Buttons */}
-          <div className="flex gap-3">
-            {!showResult ? (
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleSubmit}
-                disabled={
-                  question.type === 'multiple-choice' 
-                    ? !selectedOption 
-                    : !userAnswer.trim()
-                }
-                className={`flex-1 px-6 py-4 rounded-[16px] font-bold text-white transition-all flex items-center justify-center gap-2 ${
-                  (question.type === 'multiple-choice' ? !selectedOption : !userAnswer.trim())
-                    ? darkMode
-                      ? 'bg-[#334155] text-[#64748B] cursor-not-allowed'
-                      : 'bg-[#E5E7EB] text-[#9CA3AF] cursor-not-allowed'
-                    : ''
-                }`}
-                style={(question.type === 'multiple-choice' ? selectedOption : userAnswer.trim()) ? {
-                  background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-                  boxShadow: '0 8px 24px -8px rgba(99, 102, 241, 0.6)'
-                } : {}}
-              >
-                <Send className="w-5 h-5" strokeWidth={2} />
-                제출하기
-              </motion.button>
-            ) : (
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleNext}
-                className="flex-1 px-6 py-4 rounded-[16px] font-bold text-white transition-all flex items-center justify-center gap-2"
-                style={{
-                  background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
-                  boxShadow: '0 8px 24px -8px rgba(16, 185, 129, 0.6)'
-                }}
-              >
-                다음 문제
-                <ArrowRight className="w-5 h-5" strokeWidth={2} />
-              </motion.button>
+            {/* ── 힌트 버튼 ── */}
+            {!showResult && (
+              <div className="mb-6">
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={handleShowHint}
+                  disabled={currentHint >= 3 || hintLoading}
+                  className={`px-5 py-3 rounded-2xl flex items-center gap-2 font-bold transition-all text-sm ${
+                    currentHint >= 3 || hintLoading
+                      ? darkMode
+                        ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                      : 'bg-amber-400 hover:bg-amber-500 text-white'
+                  }`}
+                  style={currentHint < 3 && !hintLoading ? { boxShadow: '0 8px 24px -8px rgba(251,191,36,0.6)' } : {}}
+                >
+                  {hintLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      AI 힌트 생성 중...
+                    </>
+                  ) : (
+                    <>
+                      <Lightbulb className="w-4 h-4" strokeWidth={2} fill={currentHint < 3 ? "white" : "none"} />
+                      AI 힌트 보기 ({currentHint}/3)
+                    </>
+                  )}
+                </motion.button>
+
+                <AnimatePresence>
+                  {showHints && generatedHints.length > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: "auto" }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mt-4 space-y-2 overflow-hidden"
+                    >
+                      {generatedHints.map((hint, index) => (
+                        <motion.div
+                          key={index}
+                          initial={{ opacity: 0, x: -16 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: index * 0.08 }}
+                          className={`p-4 rounded-2xl border ${
+                            darkMode
+                              ? 'bg-amber-900/20 border-amber-500/30 text-amber-200'
+                              : 'bg-amber-50 border-amber-200 text-amber-900'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex-shrink-0 w-6 h-6 rounded-full bg-amber-400 text-white flex items-center justify-center text-xs font-black">
+                              {index + 1}
+                            </div>
+                            <div className="flex-1">
+                              <p className={`text-xs font-bold mb-1 ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+                                {index === 0 ? '💡 첫 번째 힌트' : index === 1 ? '💡 두 번째 힌트' : '💡 마지막 힌트'}
+                              </p>
+                              <p className="text-sm font-medium leading-relaxed">{hint}</p>
+                            </div>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
             )}
+
+            {/* ── 정답/오답 결과 ── */}
+            <AnimatePresence>
+              {showResult && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className={`mb-6 p-5 rounded-2xl border-2 ${
+                    isCorrect
+                      ? darkMode
+                        ? 'bg-emerald-900/30 border-emerald-500/50'
+                        : 'bg-emerald-50 border-emerald-300'
+                      : darkMode
+                        ? 'bg-red-900/30 border-red-500/50'
+                        : 'bg-red-50 border-red-300'
+                  }`}
+                >
+                  <div className="flex items-start gap-3">
+                    {isCorrect ? (
+                      <CheckCircle className={`w-7 h-7 flex-shrink-0 ${darkMode ? 'text-emerald-400' : 'text-emerald-600'}`} strokeWidth={2} />
+                    ) : (
+                      <XCircle className={`w-7 h-7 flex-shrink-0 ${darkMode ? 'text-red-400' : 'text-red-600'}`} strokeWidth={2} />
+                    )}
+                    <div>
+                      <h3 className={`text-base font-black mb-1.5 ${
+                        isCorrect
+                          ? darkMode ? 'text-emerald-300' : 'text-emerald-700'
+                          : darkMode ? 'text-red-300' : 'text-red-700'
+                      }`}>
+                        {isCorrect ? '🎉 정답입니다!' : '😢 아쉽지만 오답이에요'}
+                      </h3>
+                      <p className={`text-sm mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                        정답: <span className="font-black">{question.answer}</span>
+                      </p>
+                      {question.explanation && (
+                        <p className={`text-sm leading-relaxed ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                          {question.explanation}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* ── 액션 버튼 ── */}
+            <div className="flex gap-3">
+              {!showResult ? (
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={handleSubmit}
+                  disabled={question.type === 'multiple-choice' ? !selectedOption : !userAnswer.trim()}
+                  className={`flex-1 px-6 py-4 rounded-2xl font-bold text-white transition-all flex items-center justify-center gap-2 ${
+                    (question.type === 'multiple-choice' ? !selectedOption : !userAnswer.trim())
+                      ? darkMode
+                        ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                      : ''
+                  }`}
+                  style={
+                    (question.type === 'multiple-choice' ? selectedOption : userAnswer.trim())
+                      ? {
+                          background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                          boxShadow: '0 8px 24px -8px rgba(99,102,241,0.6)'
+                        }
+                      : {}
+                  }
+                >
+                  <Send className="w-5 h-5" strokeWidth={2} />
+                  제출하기
+                </motion.button>
+              ) : (
+                <motion.button
+                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                  onClick={handleNext}
+                  className="flex-1 px-6 py-4 rounded-2xl font-bold text-white transition-all flex items-center justify-center gap-2"
+                  style={{
+                    background: 'linear-gradient(135deg, #10B981 0%, #059669 100%)',
+                    boxShadow: '0 8px 24px -8px rgba(16,185,129,0.6)'
+                  }}
+                >
+                  다음 문제
+                  <ArrowRight className="w-5 h-5" strokeWidth={2} />
+                </motion.button>
+              )}
+            </div>
           </div>
         </motion.div>
       </div>

@@ -1191,217 +1191,98 @@ app.get("/make-server-48be01a5/quiz-image/cache", async (c) => {
   }
 });
 
-// ==================== Prefetch Endpoint (admin/seed — never called during gameplay) ====================
+// ==================== Admin Stats (개발자 전용) ====================
 
-/**
- * POST /make-server-48be01a5/quiz-image/prefetch
- *
- * Admin/seed endpoint. Calls Google Custom Search once, picks the best
- * image (+ up to 2 alternates), and stores all URLs in quiz_images.
- * During gameplay the UI reads primary_url directly without any API call.
- *
- * Body: { quizItemId: string, era: string, topic: string, keywords: string[] }
- * Returns: { primaryUrl, alt1Url, alt2Url, provider, cacheKey }
- */
-app.post("/make-server-48be01a5/quiz-image/prefetch", async (c) => {
+const ADMIN_SECRET = Deno.env.get("ADMIN_SECRET") ?? "mvhistory-admin-2025";
+
+function isAdminAuth(c: any): boolean {
+  const authHeader = c.req.header("X-Admin-Secret") ?? "";
+  const querySecret = c.req.query("secret") ?? "";
+  return authHeader === ADMIN_SECRET || querySecret === ADMIN_SECRET;
+}
+
+// GET /admin/completion-stats — 210장 완성자 통계
+app.get("/make-server-48be01a5/admin/completion-stats", async (c) => {
+  if (!isAdminAuth(c)) {
+    return c.json({ success: false, error: "Unauthorized" }, 401);
+  }
   try {
-    const body = await c.req.json();
-    const { quizItemId, era, topic, keywords } = body as {
-      quizItemId: string;
-      era: string;
-      topic: string;
-      keywords: string[];
-    };
+    const TOTAL_CARDS = 210;
+    const allUserCards = await kv.getByPrefix("card:");
 
-    if (!quizItemId || !era || !topic || !Array.isArray(keywords) || keywords.length === 0) {
-      return c.json({ error: "Missing required fields: quizItemId, era, topic, keywords" }, 400);
+    // userId → Set<characterId>
+    const userCardMap = new Map<string, Set<string>>();
+    for (const item of allUserCards as any[]) {
+      // key pattern: card:{userId}:{characterId}
+      const parts = (item.key as string).split(":");
+      if (parts.length < 3) continue;
+      const userId = parts[1];
+      const charId = parts.slice(2).join(":");
+      if (!userCardMap.has(userId)) userCardMap.set(userId, new Set());
+      userCardMap.get(userId)!.add(charId);
     }
 
-    const cacheKey = await buildCacheKey(era, topic, keywords);
-    const db = dbClient();
-
-    // Return cached result immediately if already prefetched
-    const { data: existing } = await db
-      .from("quiz_images")
-      .select("primary_url, alt1_url, alt2_url, provider, cache_key")
-      .eq("quiz_item_id", quizItemId)
-      .eq("status", "ready")
-      .maybeSingle();
-
-    if (existing?.primary_url) {
-      return c.json({
-        primaryUrl: existing.primary_url,
-        alt1Url: existing.alt1_url ?? null,
-        alt2Url: existing.alt2_url ?? null,
-        provider: existing.provider,
-        cacheKey: existing.cache_key,
-        cached: true,
+    // 사용자별 카드 수
+    const userStats: Array<{ userId: string; cardCount: number; percent: number; completedAt?: string }> = [];
+    for (const [userId, cards] of userCardMap.entries()) {
+      userStats.push({
+        userId,
+        cardCount: cards.size,
+        percent: Math.round((cards.size / TOTAL_CARDS) * 100),
       });
     }
+    userStats.sort((a, b) => b.cardCount - a.cardCount);
 
-    // --- Google Custom Search: fetch up to 5 results, pick top 3 relevant ---
-    const apiKey = Deno.env.get("GOOGLE_SEARCH_API_KEY") ?? Deno.env.get("GOOGLE_API_KEY");
-    const cx = Deno.env.get("GOOGLE_SEARCH_ENGINE_ID") ?? Deno.env.get("GOOGLE_CX");
+    const completedUsers = userStats.filter(u => u.cardCount >= TOTAL_CARDS);
 
-    let primaryUrl = PLACEHOLDER_IMAGE_URL;
-    let alt1Url: string | null = null;
-    let alt2Url: string | null = null;
-    let sourceUrl: string | null = null;
-    let provider = "placeholder";
+    // 구간별 분포 (0-24%, 25-49%, 50-74%, 75-99%, 100%)
+    const distribution = {
+      "0-24%":   userStats.filter(u => u.percent < 25).length,
+      "25-49%":  userStats.filter(u => u.percent >= 25 && u.percent < 50).length,
+      "50-74%":  userStats.filter(u => u.percent >= 50 && u.percent < 75).length,
+      "75-99%":  userStats.filter(u => u.percent >= 75 && u.percent < 100).length,
+      "100%":    completedUsers.length,
+    };
 
-    if (apiKey && cx) {
-      const searchUrl = new URL("https://www.googleapis.com/customsearch/v1");
-      searchUrl.searchParams.set("key", apiKey);
-      searchUrl.searchParams.set("cx", cx);
-      searchUrl.searchParams.set("q", buildGoogleSearchQuery(topic, keywords, era));
-      searchUrl.searchParams.set("searchType", "image");
-      searchUrl.searchParams.set("num", "8");
-      searchUrl.searchParams.set("safe", "active");
-      searchUrl.searchParams.set("imgSize", "large");
-      searchUrl.searchParams.set("gl", "kr");
+    // 피드백(요청) 목록
+    const feedbackList = await kv.getByPrefix("feedback:request-more:");
 
-      try {
-        const searchRes = await fetch(searchUrl.toString());
-        if (searchRes.ok) {
-          const searchData = await searchRes.json();
-          const items = (searchData.items ?? []) as Array<{
-            link: string; title: string; snippet?: string; image?: { contextLink?: string };
-          }>;
-
-          const relevant = items.filter((item) => isGoogleResultRelevant(item, era, keywords));
-
-          if (relevant.length > 0) {
-            primaryUrl = relevant[0].link;
-            sourceUrl = relevant[0].image?.contextLink ?? relevant[0].link;
-            alt1Url = relevant[1]?.link ?? null;
-            alt2Url = relevant[2]?.link ?? null;
-            provider = "google";
-            console.log(`Prefetch [google] ${quizItemId}: ${primaryUrl}`);
-          }
-        }
-      } catch (searchErr) {
-        console.error("Google Search failed during prefetch:", searchErr);
-      }
-    }
-
-    // Store all URLs in DB
-    const prompt = buildQuizImagePrompt(era, topic, keywords);
-    await db.from("quiz_images").upsert(
-      {
-        cache_key: cacheKey,
-        quiz_item_id: quizItemId,
-        prompt,
-        model: provider === "google" ? "google" : "placeholder",
-        quality: "search",
-        size: "original",
-        storage_bucket: null,
-        storage_path: null,
-        public_url: primaryUrl,     // backward-compat column
-        primary_url: primaryUrl,
-        alt1_url: alt1Url,
-        alt2_url: alt2Url,
-        source_url: sourceUrl,
-        provider,
-        status: "ready",
-        error: null,
+    return c.json({
+      success: true,
+      data: {
+        totalCards: TOTAL_CARDS,
+        totalUsers: userStats.length,
+        completedUsers: completedUsers.length,
+        completedUserIds: completedUsers.map(u => u.userId),
+        topUsers: userStats.slice(0, 20),
+        distribution,
+        feedbackCount: feedbackList.length,
+        feedbackList: (feedbackList as any[]).map(f => f.value).slice(0, 100),
       },
-      { onConflict: "cache_key" },
-    );
-
-    return c.json({
-      primaryUrl,
-      alt1Url,
-      alt2Url,
-      provider,
-      cacheKey,
-      cached: false,
     });
   } catch (error: any) {
-    console.error("quiz-image/prefetch error:", error);
-    return c.json({ error: error.message }, 500);
+    console.error("Admin completion stats error:", error);
+    return c.json({ success: false, error: error.message }, 500);
   }
 });
 
-/**
- * GET /make-server-48be01a5/quiz-image/by-item?quizItemId=...
- *
- * Instant read during gameplay — NO API calls, just a DB read.
- * Returns the stored primary_url, alt1_url, alt2_url immediately.
- */
-app.get("/make-server-48be01a5/quiz-image/by-item", async (c) => {
+// POST /feedback/request-more — 학습자가 "더 많은 문제" 요청
+app.post("/make-server-48be01a5/feedback/request-more", async (c) => {
   try {
-    const quizItemId = c.req.query("quizItemId");
-    if (!quizItemId) return c.json({ error: "Missing quizItemId" }, 400);
+    const { userId, message } = await c.req.json();
+    if (!userId) return c.json({ success: false, error: "userId required" }, 400);
 
-    const db = dbClient();
-    const { data } = await db
-      .from("quiz_images")
-      .select("primary_url, alt1_url, alt2_url, provider, cache_key, status, public_url")
-      .eq("quiz_item_id", quizItemId)
-      .maybeSingle();
-
-    if (!data) {
-      // Not prefetched yet — return placeholder, client will enqueue background prefetch
-      return c.json({ primaryUrl: PLACEHOLDER_IMAGE_URL, provider: "placeholder", prefetched: false });
-    }
-
-    const primaryUrl = data.primary_url ?? data.public_url ?? PLACEHOLDER_IMAGE_URL;
-    return c.json({
-      primaryUrl,
-      alt1Url: data.alt1_url ?? null,
-      alt2Url: data.alt2_url ?? null,
-      provider: data.provider ?? "unknown",
-      cacheKey: data.cache_key,
-      prefetched: data.status === "ready",
-    });
+    const key = `feedback:request-more:${userId}:${Date.now()}`;
+    const data = {
+      userId,
+      message: message || "더 많은 문제를 원합니다!",
+      requestedAt: new Date().toISOString(),
+    };
+    await kv.set(key, data);
+    return c.json({ success: true, data });
   } catch (error: any) {
-    return c.json({ error: error.message }, 500);
-  }
-});
-
-/**
- * POST /make-server-48be01a5/quiz-image/swap
- *
- * Admin: cycle primary_url among alternates (no API call).
- * Body: { quizItemId: string }
- * Returns: { primaryUrl, alt1Url, alt2Url }
- */
-app.post("/make-server-48be01a5/quiz-image/swap", async (c) => {
-  try {
-    const body = await c.req.json();
-    const { quizItemId } = body as { quizItemId: string };
-    if (!quizItemId) return c.json({ error: "Missing quizItemId" }, 400);
-
-    const db = dbClient();
-    const { data, error: fetchError } = await db
-      .from("quiz_images")
-      .select("primary_url, alt1_url, alt2_url, cache_key")
-      .eq("quiz_item_id", quizItemId)
-      .maybeSingle();
-
-    if (fetchError) throw fetchError;
-    if (!data) return c.json({ error: "No prefetched image found for this quiz item" }, 404);
-
-    // Rotate: primary → alt2, alt1 → primary, alt2 → alt1
-    const next = data.alt1_url ?? data.primary_url;
-    const newAlt1 = data.alt2_url ?? data.primary_url;
-    const newAlt2 = data.primary_url;
-
-    const { error: updateError } = await db
-      .from("quiz_images")
-      .update({
-        primary_url: next,
-        public_url: next,
-        alt1_url: newAlt1,
-        alt2_url: newAlt2,
-      })
-      .eq("quiz_item_id", quizItemId);
-
-    if (updateError) throw updateError;
-
-    return c.json({ primaryUrl: next, alt1Url: newAlt1, alt2Url: newAlt2 });
-  } catch (error: any) {
-    return c.json({ error: error.message }, 500);
+    console.error("Feedback request-more error:", error);
+    return c.json({ success: false, error: error.message }, 500);
   }
 });
 

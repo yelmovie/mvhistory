@@ -13,10 +13,12 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
       'Authorization': `Bearer ${_anonKey}`,
       ...options?.headers,
     },
+    signal: AbortSignal.timeout(8000),
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    // 404는 서버 미배포 상황이므로 조용히 처리
+    const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
     throw new Error(error.error || `API Error: ${response.status}`);
   }
 
@@ -234,6 +236,22 @@ export function generateUserId(): string {
   return `user_${Date.now()}_${Math.random().toString(36).substring(7)}`;
 }
 
+// 로컬 기본 프로필 생성 (서버 연결 실패 시 사용)
+function createLocalProfile(userId: string, name?: string, email?: string): UserProfile {
+  return {
+    userId,
+    name: name || '학습자',
+    email: email || '',
+    level: 1,
+    exp: 0,
+    maxExp: 100,
+    points: 0,
+    streak: 1,
+    lastLoginDate: new Date().toISOString(),
+    createdAt: new Date().toISOString(),
+  };
+}
+
 // Initialize user session
 export async function initializeUserSession(name?: string, email?: string): Promise<UserProfile> {
   let userId = getCurrentUserId();
@@ -243,19 +261,33 @@ export async function initializeUserSession(name?: string, email?: string): Prom
     setCurrentUserId(userId);
   }
   
-  // Get or create profile
-  let profile = await getUserProfile(userId);
-  
-  // Update name and email if provided
-  if (name || email) {
-    profile = await updateUserProfile(userId, {
-      name: name || profile.name,
-      email: email || profile.email,
-    });
+  try {
+    // Get or create profile
+    let profile = await getUserProfile(userId);
+    
+    // Update name and email if provided
+    if (name || email) {
+      try {
+        profile = await updateUserProfile(userId, {
+          name: name || profile.name,
+          email: email || profile.email,
+        });
+      } catch {
+        // 업데이트 실패 시 현재 프로필 유지
+      }
+    }
+    
+    // Update login streak
+    try {
+      profile = await updateLoginStreak(userId);
+    } catch {
+      // 스트릭 업데이트 실패 시 현재 프로필 유지
+    }
+    
+    return profile;
+  } catch {
+    // 서버 연결 실패 시 로컬 프로필 반환
+    console.warn('서버 연결 실패 — 로컬 프로필 사용');
+    return createLocalProfile(userId, name, email);
   }
-  
-  // Update login streak
-  profile = await updateLoginStreak(userId);
-  
-  return profile;
 }
