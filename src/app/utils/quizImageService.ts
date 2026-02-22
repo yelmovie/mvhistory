@@ -9,13 +9,16 @@
  *   const url = await getQuizImage({ era: '조선시대', topic: '훈민정음', keywords: ['세종대왕', '한글'] });
  */
 
-const SUPABASE_URL =
+// Strip any trailing path so we always start from the Supabase project root.
+// Defensive: if VITE_SUPABASE_URL accidentally contains "/functions/v1/..." we strip it.
+const _rawSupabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ?? "https://ngvsfcekfzzykvcsjktp.supabase.co";
+const SUPABASE_URL = _rawSupabaseUrl.replace(/\/functions\/v1.*$/, "").replace(/\/$/, "");
+
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
 
-// Edge Function base: just the functions/v1 root.
-// The deployed function name "make-server-48be01a5" is the Hono prefix inside the function,
-// so the full route is /functions/v1/make-server-48be01a5/<path>.
+// Full base for the deployed Edge Function.
+// Final URL shape: {SUPABASE_URL}/functions/v1/make-server-48be01a5/<path>
 const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`;
 
 // ---------------------------------------------------------------------------
