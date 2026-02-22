@@ -28,6 +28,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Large asset folders (not needed for deployment)
+src/assets/face/
+
 # TypeScript
 *.tsbuildinfo
 
