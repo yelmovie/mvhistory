@@ -97,12 +97,13 @@ export default function App() {
 
         // Load completed questions
         const userId = savedUser ? JSON.parse(savedUser).email : 'guest';
-        const { projectId, publicAnonKey } = await import('/utils/supabase/info');
+        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ngvsfcekfzzykvcsjktp.supabase.co';
+        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
         const response = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-48be01a5/quiz/completed/${userId}`,
+          `${supabaseUrl}/functions/v1/make-server-48be01a5/quiz/completed/${userId}`,
           {
             headers: {
-              'Authorization': `Bearer ${publicAnonKey}`
+              'Authorization': `Bearer ${anonKey}`
             }
           }
         );

@@ -14,7 +14,8 @@ import { ExpBar } from "./gamification/ExpBar";
 import { RewardAnimation } from "./gamification/RewardAnimation";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { generateQuizHint } from "../utils/openaiApi";
-import { projectId, publicAnonKey } from "../../../utils/supabase/info";
+const _supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ngvsfcekfzzykvcsjktp.supabase.co';
+const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
 
 interface QuizScreenProps {
   question: {
@@ -356,16 +357,15 @@ export function QuizScreen({
     // Mark question as completed if answered correctly
     if (isCorrect) {
       try {
-        const { projectId, publicAnonKey } = await import('/utils/supabase/info');
         const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
         const userId = currentUser.email || 'guest';
 
         await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-48be01a5/quiz/completed`,
+          `${_supabaseUrl}/functions/v1/make-server-48be01a5/quiz/completed`,
           {
             method: 'POST',
             headers: {
-              'Authorization': `Bearer ${publicAnonKey}`,
+              'Authorization': `Bearer ${_anonKey}`,
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({

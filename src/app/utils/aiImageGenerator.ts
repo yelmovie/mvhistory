@@ -6,8 +6,9 @@ export interface CharacterImageCache {
 
 const STORAGE_KEY = 'character_images_cache';
 
-// Supabase 정보 가져오기
-import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+// Supabase 정보
+const _supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ngvsfcekfzzykvcsjktp.supabase.co';
+const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
 
 // localStorage에서 이미지 캐시 가져오기
 export function getImageCache(): CharacterImageCache {
@@ -50,12 +51,12 @@ export async function generateCharacterImage(
 ): Promise<string> {
   try {
     const response = await fetch(
-      `https://${projectId}.supabase.co/functions/v1/make-server-48be01a5/generate-character-image`,
+      `${_supabaseUrl}/functions/v1/make-server-48be01a5/generate-character-image`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${publicAnonKey}`
+          'Authorization': `Bearer ${_anonKey}`
         },
         body: JSON.stringify({
           characterName,
