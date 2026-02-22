@@ -128,6 +128,78 @@ pnpm build
 - GPT-4o-mini: 매우 저렴한 비용
 - DALL-E: 이미지당 약 $0.02
 
+---
+
+## Quiz Image Pipeline
+
+### How caching works
+
+```
+1. Client calls getQuizImageFromItem(quizItem)
+2. Edge Function computes a deterministic cache_key (SHA-256 of era+topic+keywords+size+quality+version)
+3. Checks public.quiz_images table
+   - status=ready  → return public_url immediately (cost: $0)
+   - status=pending → return 202 + placeholder; client retries
+   - not found     → proceed to generation
+4. Generation order (cheapest first):
+   a. Google Custom Search (free up to 100/day) + relevance check
+   b. OpenAI gpt-image-1-mini, quality=low, 1024x1024 ($0.005/image)
+5. Image bytes uploaded to Supabase Storage (quiz-images bucket, public)
+6. DB row updated to status=ready with permanent public_url
+7. All future requests for the same quiz item return the cached URL instantly
+```
+
+Every quiz item is generated **exactly once**. Retries, refreshes, and different users all reuse the same stored URL.
+
+### How to set env vars
+
+**Supabase Edge Function Secrets** (Dashboard → Edge Functions → server → Secrets):
+
+| Variable | Value | Notes |
+|---|---|---|
+| `OPENAI_API_KEY` | `sk-...` | Already set |
+| `SUPABASE_URL` | `https://xxx.supabase.co` | Already set |
+| `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` | Already set |
+| `GOOGLE_API_KEY` | `AIza...` | Already set |
+| `GOOGLE_CX` | `cx-id` | Already set |
+| `SUPABASE_STORAGE_BUCKET` | `quiz-images` | **New** |
+| `IMAGE_MAX_RETRIES` | `2` | **New** |
+| `IMAGE_RATE_LIMIT_PER_MIN` | `30` | **New** |
+
+**Frontend** `.env.local` (no changes needed — same 3 variables):
+```
+VITE_OPENAI_API_KEY=...
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+```
+
+### Supabase setup checklist (one-time)
+
+1. **Run SQL migration**: Supabase Dashboard → SQL Editor → paste `supabase/migrations/20250222_quiz_images.sql` → Run
+2. **Create Storage bucket**: Dashboard → Storage → New bucket → name: `quiz-images` → check **Public** → Create
+3. **Add 3 new Edge Function Secrets** listed in the table above
+4. **Redeploy Edge Function**: push to git (Supabase auto-deploys from linked repo) or run `supabase functions deploy server`
+
+### Cost control checklist
+
+- [x] Model: `gpt-image-1-mini`, quality `low` — $0.005/image (cheapest available)
+- [x] Google Custom Search used first (free 100/day quota) — AI generation only as fallback
+- [x] Deterministic cache_key prevents duplicate generation for the same quiz item
+- [x] Images stored permanently in Supabase Storage — no re-generation on page refresh
+- [x] Rate limit: 30 requests/min/IP — prevents runaway generation
+- [x] `IMAGE_MAX_RETRIES=2` — caps retry cost on failures
+- [x] `status=pending` guard — prevents parallel duplicate generation under concurrent load
+- [x] Client shows fallback Unsplash image immediately — no blocking on generation
+
+### Manual test checklist
+
+1. Open quiz screen → image skeleton appears briefly → image loads
+2. Navigate away and return to the same question → image loads instantly (no Network request to OpenAI)
+3. In Supabase Dashboard → Table Editor → `quiz_images` → verify `status=ready` and `public_url` present
+4. Open Supabase Storage → `quiz-images` bucket → confirm file uploaded at `{cache_key}/v1.png`
+5. In browser DevTools → Network tab → send 31 rapid POST requests to `/quiz-image/generate` → verify 429 on 31st
+6. Temporarily clear `OPENAI_API_KEY` secret → trigger generation → verify `status=failed` in DB, fallback image shown in UI
+
 ## 문서 📚
 
 - [Google Image Setup Guide](/GOOGLE_IMAGE_SETUP.md) - 이미지 검색 API 설정

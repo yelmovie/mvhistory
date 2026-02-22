@@ -1,8 +1,41 @@
 import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
+import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
+import {
+  uploadImageToStorage,
+  fetchImageBytes,
+  detectContentType,
+  extensionForContentType,
+} from "./storage_helper.tsx";
+import {
+  buildCacheKey,
+  buildQuizImagePrompt,
+  isImageRelevant,
+} from "./prompt_builder.tsx";
+import { checkRateLimit, retryAfterSeconds, pruneExpiredEntries } from "./rate_limiter.tsx";
+
 const app = new Hono();
+
+// ---------------------------------------------------------------------------
+// Config from environment (Edge Function Secrets)
+// ---------------------------------------------------------------------------
+const STORAGE_BUCKET = Deno.env.get("SUPABASE_STORAGE_BUCKET") ?? "quiz-images";
+const MAX_RETRIES = parseInt(Deno.env.get("IMAGE_MAX_RETRIES") ?? "2", 10);
+const RATE_LIMIT_PER_MIN = parseInt(Deno.env.get("IMAGE_RATE_LIMIT_PER_MIN") ?? "30", 10);
+const OPENAI_API_KEY = () => Deno.env.get("OPENAI_API_KEY") ?? "";
+const SUPABASE_URL = () => Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_ROLE_KEY = () => Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+
+// Fallback placeholder shown when all generation attempts fail
+const PLACEHOLDER_IMAGE_URL =
+  "https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=1024&q=80";
+
+// Supabase DB client (service role) for quiz_images table
+function dbClient() {
+  return createClient(SUPABASE_URL(), SERVICE_ROLE_KEY());
+}
 
 // Enable logger
 app.use('*', logger(console.log));
@@ -805,5 +838,306 @@ app.get("/make-server-48be01a5/quiz-image/:questionId", async (c) => {
     }, 500);
   }
 });
+
+// ==================== Quiz Image Pipeline (generate-once, reuse-forever) ====================
+
+/**
+ * Helper: sleep for `ms` milliseconds (for exponential backoff).
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Attempt to generate an image via OpenAI gpt-image-1-mini (low quality).
+ * Returns base64-decoded bytes, or throws on failure.
+ */
+async function generateOpenAIImage(prompt: string): Promise<Uint8Array> {
+  const apiKey = OPENAI_API_KEY();
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+
+  const res = await fetch("https://api.openai.com/v1/images/generations", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-image-1-mini",
+      prompt,
+      n: 1,
+      size: "1024x1024",
+      quality: "low",
+      response_format: "b64_json",
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`OpenAI API error (${res.status}): ${errText}`);
+  }
+
+  const data = await res.json();
+  const b64 = data?.data?.[0]?.b64_json;
+  if (!b64) throw new Error("OpenAI returned no image data");
+
+  // Decode base64 → Uint8Array
+  const binaryStr = atob(b64);
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) {
+    bytes[i] = binaryStr.charCodeAt(i);
+  }
+  return bytes;
+}
+
+/**
+ * Core image resolution pipeline for a single cache key.
+ * 1. Google Search (if available) with relevance check.
+ * 2. OpenAI gpt-image-1-mini (low) as fallback.
+ * 3. Upload to Supabase Storage.
+ * 4. Upsert DB row to status=ready.
+ * Returns the public URL.
+ */
+async function resolveAndStoreImage(
+  cacheKey: string,
+  quizItemId: string | undefined,
+  era: string,
+  topic: string,
+  keywords: string[],
+  styleHints: string | undefined,
+  prompt: string,
+): Promise<string> {
+  const db = dbClient();
+  let imageBytes: Uint8Array | null = null;
+  let source = "ai";
+
+  // --- 1. Try Google Custom Search first (free quota) ---
+  const googleQuery = `${keywords.slice(0, 2).join(" ")} ${era} 한국 역사`;
+  const googleUrl = await searchGoogleImage(googleQuery);
+
+  if (googleUrl && isImageRelevant(googleUrl)) {
+    try {
+      imageBytes = await fetchImageBytes(googleUrl);
+      source = "google";
+    } catch (e) {
+      console.warn("Google image fetch failed, falling back to AI:", e);
+    }
+  }
+
+  // --- 2. OpenAI fallback with retries ---
+  if (!imageBytes) {
+    let lastErr: unknown;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        await sleep(500 * Math.pow(2, attempt - 1)); // 500ms, 1000ms, …
+      }
+      try {
+        imageBytes = await generateOpenAIImage(prompt);
+        source = "ai";
+        break;
+      } catch (err) {
+        lastErr = err;
+        console.error(`OpenAI attempt ${attempt + 1} failed:`, err);
+      }
+    }
+    if (!imageBytes) {
+      // All retries exhausted — mark failed and return placeholder
+      await db.from("quiz_images").upsert(
+        {
+          cache_key: cacheKey,
+          quiz_item_id: quizItemId ?? null,
+          prompt,
+          model: "gpt-image-1-mini",
+          quality: "low",
+          size: "1024x1024",
+          storage_bucket: STORAGE_BUCKET,
+          storage_path: `${cacheKey}/v1.png`,
+          public_url: PLACEHOLDER_IMAGE_URL,
+          status: "failed",
+          error: String(lastErr),
+        },
+        { onConflict: "cache_key" },
+      );
+      return PLACEHOLDER_IMAGE_URL;
+    }
+  }
+
+  // --- 3. Upload to Supabase Storage ---
+  const contentType = detectContentType(imageBytes);
+  const ext = extensionForContentType(contentType);
+  const storagePath = `${cacheKey}/v1.${ext}`;
+
+  const publicUrl = await uploadImageToStorage(
+    imageBytes,
+    storagePath,
+    STORAGE_BUCKET,
+    contentType,
+  );
+
+  // --- 4. Persist to DB ---
+  await db.from("quiz_images").upsert(
+    {
+      cache_key: cacheKey,
+      quiz_item_id: quizItemId ?? null,
+      prompt,
+      model: source === "ai" ? "gpt-image-1-mini" : "google-search",
+      quality: source === "ai" ? "low" : "external",
+      size: "1024x1024",
+      storage_bucket: STORAGE_BUCKET,
+      storage_path: storagePath,
+      public_url: publicUrl,
+      status: "ready",
+      error: null,
+    },
+    { onConflict: "cache_key" },
+  );
+
+  console.log(`Image stored [${source}] → ${publicUrl}`);
+  return publicUrl;
+}
+
+// Prune rate limiter entries every ~100 requests to avoid memory leak
+let _pruneCounter = 0;
+
+/**
+ * POST /make-server-48be01a5/quiz-image/generate
+ *
+ * Body: { quizItemId?: string, era: string, topic: string, keywords: string[], styleHints?: string }
+ * Returns: { publicUrl, cacheKey, status, source }
+ *
+ * Idempotent: same inputs return cached result without re-generating.
+ */
+app.post("/make-server-48be01a5/quiz-image/generate", async (c) => {
+  // Rate limiting
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
+    c.req.header("x-real-ip") ?? "unknown";
+
+  if (++_pruneCounter % 100 === 0) pruneExpiredEntries();
+
+  if (!checkRateLimit(ip, RATE_LIMIT_PER_MIN)) {
+    return c.json(
+      {
+        error: "Rate limit exceeded. Please slow down.",
+        retryAfter: retryAfterSeconds(ip),
+      },
+      429,
+    );
+  }
+
+  try {
+    const body = await c.req.json();
+    const { quizItemId, era, topic, keywords, styleHints } = body as {
+      quizItemId?: string;
+      era: string;
+      topic: string;
+      keywords: string[];
+      styleHints?: string;
+    };
+
+    if (!era || !topic || !Array.isArray(keywords) || keywords.length === 0) {
+      return c.json({ error: "Missing required fields: era, topic, keywords" }, 400);
+    }
+
+    // Build deterministic cache key
+    const cacheKey = await buildCacheKey(era, topic, keywords);
+
+    // --- Check DB cache first ---
+    const db = dbClient();
+    const { data: existing } = await db
+      .from("quiz_images")
+      .select("*")
+      .eq("cache_key", cacheKey)
+      .maybeSingle();
+
+    if (existing) {
+      if (existing.status === "ready") {
+        return c.json({
+          publicUrl: existing.public_url,
+          cacheKey,
+          status: "ready",
+          source: "db-cache",
+        });
+      }
+      if (existing.status === "pending") {
+        return c.json(
+          {
+            publicUrl: PLACEHOLDER_IMAGE_URL,
+            cacheKey,
+            status: "pending",
+            message: "Image is being generated, please retry in a few seconds.",
+          },
+          202,
+        );
+      }
+      // status=failed → retry generation
+    }
+
+    // Mark as pending before long async work (prevents duplicate generation on parallel requests)
+    const prompt = buildQuizImagePrompt(era, topic, keywords, styleHints);
+    await db.from("quiz_images").upsert(
+      {
+        cache_key: cacheKey,
+        quiz_item_id: quizItemId ?? null,
+        prompt,
+        model: "gpt-image-1-mini",
+        quality: "low",
+        size: "1024x1024",
+        storage_bucket: STORAGE_BUCKET,
+        storage_path: `${cacheKey}/v1.png`,
+        public_url: PLACEHOLDER_IMAGE_URL,
+        status: "pending",
+        error: null,
+      },
+      { onConflict: "cache_key" },
+    );
+
+    // Resolve image (Google → AI → Storage → DB)
+    const publicUrl = await resolveAndStoreImage(
+      cacheKey,
+      quizItemId,
+      era,
+      topic,
+      keywords,
+      styleHints,
+      prompt,
+    );
+
+    return c.json({ publicUrl, cacheKey, status: "ready", source: "generated" });
+  } catch (error: any) {
+    console.error("quiz-image/generate error:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+/**
+ * GET /make-server-48be01a5/quiz-image/cache?cacheKey=...
+ * Debug endpoint: returns the DB row for a given cache key.
+ */
+app.get("/make-server-48be01a5/quiz-image/cache", async (c) => {
+  try {
+    const cacheKey = c.req.query("cacheKey");
+    if (!cacheKey) {
+      return c.json({ error: "Missing query param: cacheKey" }, 400);
+    }
+
+    const db = dbClient();
+    const { data, error } = await db
+      .from("quiz_images")
+      .select("*")
+      .eq("cache_key", cacheKey)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) {
+      return c.json({ error: "No record found for this cacheKey" }, 404);
+    }
+
+    return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ==================== End of Quiz Image Pipeline ====================
 
 Deno.serve(app.fetch);

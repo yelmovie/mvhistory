@@ -7,6 +7,10 @@ import {
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { imageCacheService } from "../utils/imageCache";
+import {
+  getQuizImageFromItem,
+  getFallbackImageUrl,
+} from "../utils/quizImageService";
 import { checkSpellingSimilarity } from "../data/quizData";
 import { PointsBadge } from "./gamification/PointsBadge";
 import { LevelIndicator } from "./gamification/LevelIndicator";
@@ -169,9 +173,9 @@ export function QuizScreen({
     return categoryImages[category || ''] || 'https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=1200&q=80';
   };
 
-  // Load image with deterministic selection
+  // Load image via generate-once / reuse-forever pipeline
   useEffect(() => {
-    setImageLoading(true);
+    // Reset UI state for new question
     setShowResult(false);
     setIsCorrect(false);
     setSubmittedAnswer("");
@@ -181,77 +185,44 @@ export function QuizScreen({
     setShowHints(false);
     setSpellingError(false);
     setSpellingHint("");
-    setGeneratedHints([]); // Reset AI-generated hints
+    setGeneratedHints([]);
     setHintLoading(false);
-    
+
+    let cancelled = false;
+
     const loadImage = async () => {
       setImageLoading(true);
+      // Show category fallback immediately so UI is never blank
+      setQuestionImage(getFallbackImageUrl(question.category));
+
       try {
-        // First, check if there's a cached image for this question
-        const cachedImageResponse = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-48be01a5/quiz-image/${question.id}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${publicAnonKey}`,
-              'Content-Type': 'application/json',
-            },
-          }
-        );
+        const result = await getQuizImageFromItem({
+          id: question.id,
+          question: question.question,
+          category: question.category,
+          imagePrompt: (question as any).imagePrompt,
+        });
 
-        if (cachedImageResponse.ok) {
-          const cachedData = await cachedImageResponse.json();
-          if (cachedData.success && cachedData.imageUrl) {
-            console.log('Using cached image for question', question.id);
-            setQuestionImage(cachedData.imageUrl);
-            setImageLoading(false);
-            return;
-          }
+        if (!cancelled) {
+          setQuestionImage(result.publicUrl);
         }
-
-        // Generate search query from the question
-        const searchQuery = (question as any).imageQuery || 
-          extractKeywordsFromQuestion(question.question, question.category || '조선');
-        
-        console.log('Searching Google Images for question', question.id, 'with query:', searchQuery);
-        
-        // Search for image using Google Custom Search API
-        const searchResponse = await fetch(
-          `https://${projectId}.supabase.co/functions/v1/make-server-48be01a5/search-image`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${publicAnonKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              query: searchQuery,
-              questionId: question.id
-            }),
-          }
-        );
-
-        const searchData = await searchResponse.json();
-
-        if (searchData.success && searchData.imageUrl) {
-          console.log('Found image via Google Search:', searchData.imageUrl);
-          setQuestionImage(searchData.imageUrl);
-        } else {
-          console.warn('Google Search did not return image, using fallback');
-          throw new Error(searchData.error || 'No image found');
+      } catch (err) {
+        console.error("Failed to load quiz image:", err);
+        if (!cancelled) {
+          setQuestionImage(getFallbackImageUrl(question.category));
         }
-        
-      } catch (error) {
-        console.error('Failed to load image from Google:', error);
-        // Use category-based fallback image
-        const fallbackImage = getFallbackImage(question.category, question.question);
-        console.log('Using fallback image:', fallbackImage);
-        setQuestionImage(fallbackImage);
       } finally {
-        setImageLoading(false);
+        if (!cancelled) {
+          setImageLoading(false);
+        }
       }
     };
-    
+
     loadImage();
+
+    return () => {
+      cancelled = true;
+    };
   }, [question.id]);
 
   const handleShowHint = async () => {
