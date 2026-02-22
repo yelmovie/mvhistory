@@ -1,28 +1,19 @@
 /**
- * Client-side helper for the quiz image pipeline.
+ * Quiz image service — instant-read architecture.
  *
- * Calls the Supabase Edge Function endpoint POST /quiz-image/generate and
- * returns a public image URL.  Never exposes secrets; all sensitive keys
- * stay in the Edge Function (server side).
- *
- * Usage:
- *   const url = await getQuizImage({ era: '조선시대', topic: '훈민정음', keywords: ['세종대왕', '한글'] });
+ * During gameplay: calls /by-item (pure DB read, no API) → instant.
+ * Background prefetch: calls /prefetch (Google Search, stored once).
+ * No AI image generation during gameplay.
  */
 
-// Strip any trailing path so we always start from the Supabase project root.
-// Defensive: if VITE_SUPABASE_URL accidentally contains "/functions/v1/..." we strip it.
 const _rawSupabaseUrl =
   import.meta.env.VITE_SUPABASE_URL ?? "https://ngvsfcekfzzykvcsjktp.supabase.co";
 const SUPABASE_URL = _rawSupabaseUrl.replace(/\/functions\/v1.*$/, "").replace(/\/$/, "");
-
 const ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY ?? "";
-
-// Full base for the deployed Edge Function.
-// Final URL shape: {SUPABASE_URL}/functions/v1/make-server-48be01a5/<path>
-const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1`;
+const FUNCTIONS_BASE = `${SUPABASE_URL}/functions/v1/make-server-48be01a5`;
 
 // ---------------------------------------------------------------------------
-// Fallback images by category (used when Edge Function is unreachable)
+// Fallback images by category (shown before DB resolves)
 // ---------------------------------------------------------------------------
 const CATEGORY_FALLBACKS: Record<string, string> = {
   고조선: "https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=1024&q=80",
@@ -46,7 +37,6 @@ const DEFAULT_FALLBACK =
 
 export function getFallbackImageUrl(category?: string): string {
   if (!category) return DEFAULT_FALLBACK;
-  // Partial match
   for (const [key, url] of Object.entries(CATEGORY_FALLBACKS)) {
     if (category.includes(key) || key.includes(category)) return url;
   }
@@ -54,40 +44,35 @@ export function getFallbackImageUrl(category?: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Era / topic mapping from quizData category strings
+// Era / topic mapping
 // ---------------------------------------------------------------------------
-interface EraInfo {
-  era: string;
-  topic: string;
-}
+interface EraInfo { era: string; topic: string }
 
 const CATEGORY_TO_ERA: Record<string, EraInfo> = {
-  고조선: { era: "고조선", topic: "고조선 문명" },
-  청동기시대: { era: "고조선", topic: "청동기 문화" },
-  철기시대: { era: "삼국시대 이전", topic: "철기 문화" },
-  부여: { era: "삼국시대 이전", topic: "부여 왕국" },
-  옥저: { era: "삼국시대 이전", topic: "옥저" },
-  동예: { era: "삼국시대 이전", topic: "동예" },
-  삼한: { era: "삼국시대 이전", topic: "삼한" },
-  고구려: { era: "삼국시대", topic: "고구려" },
-  백제: { era: "삼국시대", topic: "백제" },
-  신라: { era: "삼국시대", topic: "신라" },
-  삼국시대: { era: "삼국시대", topic: "삼국 문화" },
-  통일신라: { era: "통일신라", topic: "통일신라 불교 문화" },
-  발해: { era: "통일신라", topic: "발해" },
-  고려: { era: "고려시대", topic: "고려 문화" },
-  고려시대: { era: "고려시대", topic: "고려 문화" },
-  조선: { era: "조선시대", topic: "조선 유교 문화" },
-  조선시대: { era: "조선시대", topic: "조선 유교 문화" },
-  근현대: { era: "근현대", topic: "한국 근현대사" },
-  인물: { era: "조선시대", topic: "역사 인물" },
+  고조선:   { era: "고조선",        topic: "고조선 문명" },
+  청동기시대: { era: "고조선",       topic: "청동기 문화" },
+  철기시대: { era: "삼국시대 이전",  topic: "철기 문화" },
+  부여:     { era: "삼국시대 이전",  topic: "부여 왕국" },
+  옥저:     { era: "삼국시대 이전",  topic: "옥저" },
+  동예:     { era: "삼국시대 이전",  topic: "동예" },
+  삼한:     { era: "삼국시대 이전",  topic: "삼한" },
+  고구려:   { era: "삼국시대",       topic: "고구려" },
+  백제:     { era: "삼국시대",       topic: "백제" },
+  신라:     { era: "삼국시대",       topic: "신라" },
+  삼국시대: { era: "삼국시대",       topic: "삼국 문화" },
+  통일신라: { era: "통일신라",       topic: "통일신라 불교 문화" },
+  발해:     { era: "통일신라",       topic: "발해" },
+  고려:     { era: "고려시대",       topic: "고려 문화" },
+  고려시대: { era: "고려시대",       topic: "고려 문화" },
+  조선:     { era: "조선시대",       topic: "조선 유교 문화" },
+  조선시대: { era: "조선시대",       topic: "조선 유교 문화" },
+  근현대:   { era: "근현대",         topic: "한국 근현대사" },
+  인물:     { era: "조선시대",       topic: "역사 인물" },
 };
 
 export function categoryToEraInfo(category?: string): EraInfo {
   if (!category) return { era: "한국 역사", topic: "한국 문화" };
-  // Exact match first
   if (CATEGORY_TO_ERA[category]) return CATEGORY_TO_ERA[category];
-  // Partial match
   for (const [key, info] of Object.entries(CATEGORY_TO_ERA)) {
     if (category.includes(key) || key.includes(category)) return info;
   }
@@ -95,57 +80,201 @@ export function categoryToEraInfo(category?: string): EraInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Extract keywords from question text
+// Keyword extraction (used when building prefetch requests)
 // ---------------------------------------------------------------------------
 const HISTORICAL_KEYWORD_MAP: Array<{ kr: string; keywords: string[] }> = [
-  { kr: "고조선", keywords: ["고조선", "단군"] },
-  { kr: "단군", keywords: ["단군왕검", "고조선"] },
-  { kr: "고구려", keywords: ["고구려", "광개토대왕"] },
-  { kr: "백제", keywords: ["백제", "석탑"] },
-  { kr: "신라", keywords: ["신라", "불국사"] },
+  { kr: "고조선",   keywords: ["고조선", "단군"] },
+  { kr: "단군",     keywords: ["단군왕검", "고조선"] },
+  { kr: "고구려",   keywords: ["고구려", "광개토대왕"] },
+  { kr: "백제",     keywords: ["백제", "석탑"] },
+  { kr: "신라",     keywords: ["신라", "불국사"] },
   { kr: "통일신라", keywords: ["통일신라", "석굴암"] },
-  { kr: "고려", keywords: ["고려", "청자"] },
-  { kr: "세종", keywords: ["세종대왕", "훈민정음", "한글"] },
-  { kr: "한글", keywords: ["한글", "훈민정음"] },
-  { kr: "불국사", keywords: ["불국사", "석가탑"] },
-  { kr: "첨성대", keywords: ["첨성대", "신라"] },
-  { kr: "석굴암", keywords: ["석굴암", "불상"] },
-  { kr: "거북선", keywords: ["거북선", "이순신"] },
-  { kr: "이순신", keywords: ["이순신", "거북선", "임진왜란"] },
-  { kr: "독립", keywords: ["독립운동", "만세"] },
-  { kr: "3.1운동", keywords: ["3.1운동", "독립"] },
+  { kr: "고려",     keywords: ["고려", "청자"] },
+  { kr: "세종",     keywords: ["세종대왕", "훈민정음", "한글"] },
+  { kr: "한글",     keywords: ["한글", "훈민정음"] },
+  { kr: "불국사",   keywords: ["불국사", "석가탑"] },
+  { kr: "첨성대",   keywords: ["첨성대", "신라"] },
+  { kr: "석굴암",   keywords: ["석굴암", "불상"] },
+  { kr: "거북선",   keywords: ["거북선", "이순신"] },
+  { kr: "이순신",   keywords: ["이순신", "거북선", "임진왜란"] },
+  { kr: "독립",     keywords: ["독립운동", "만세"] },
+  { kr: "3.1운동",  keywords: ["3.1운동", "독립"] },
   { kr: "임진왜란", keywords: ["임진왜란", "조선"] },
   { kr: "팔만대장경", keywords: ["팔만대장경", "고려"] },
-  { kr: "청자", keywords: ["고려청자", "청자"] },
-  { kr: "백자", keywords: ["조선백자", "백자"] },
-  { kr: "경복궁", keywords: ["경복궁", "궁궐"] },
+  { kr: "청자",     keywords: ["고려청자", "청자"] },
+  { kr: "백자",     keywords: ["조선백자", "백자"] },
+  { kr: "경복궁",   keywords: ["경복궁", "궁궐"] },
   { kr: "훈민정음", keywords: ["훈민정음", "세종대왕"] },
   { kr: "금속활자", keywords: ["금속활자", "직지"] },
+  { kr: "무용총",   keywords: ["무용총", "고구려", "벽화"] },
+  { kr: "살수대첩", keywords: ["살수대첩", "을지문덕"] },
+  { kr: "황산벌",   keywords: ["황산벌", "계백"] },
 ];
 
-export function extractKeywordsFromText(
-  questionText: string,
-  category?: string,
-): string[] {
+export function extractKeywordsFromText(text: string, category?: string): string[] {
   const found: string[] = [];
-
   for (const { kr, keywords } of HISTORICAL_KEYWORD_MAP) {
-    if (questionText.includes(kr)) {
+    if (text.includes(kr)) {
       found.push(...keywords);
       if (found.length >= 4) break;
     }
   }
-
-  if (found.length === 0 && category) {
-    found.push(category);
-  }
-
-  // Deduplicate
+  if (found.length === 0 && category) found.push(category);
   return [...new Set(found)].slice(0, 4);
 }
 
 // ---------------------------------------------------------------------------
-// Main exported function
+// Types
+// ---------------------------------------------------------------------------
+export interface QuizImageResult {
+  primaryUrl: string;
+  alt1Url?: string | null;
+  alt2Url?: string | null;
+  provider?: string;
+  prefetched: boolean;
+  /** @deprecated use primaryUrl */
+  publicUrl: string;
+}
+
+// ---------------------------------------------------------------------------
+// INSTANT READ — called during gameplay (pure DB read, no API call)
+// ---------------------------------------------------------------------------
+/**
+ * Returns the stored image instantly (DB read only).
+ * If not yet prefetched, returns placeholder and enqueues background prefetch.
+ * Never blocks rendering.
+ */
+export async function getQuizImageInstant(item: {
+  id: number | string;
+  question: string;
+  answer?: string;
+  category?: string;
+  imagePrompt?: string;
+}): Promise<QuizImageResult> {
+  const fallback = getFallbackImageUrl(item.category);
+
+  try {
+    const res = await fetch(
+      `${FUNCTIONS_BASE}/quiz-image/by-item?quizItemId=${encodeURIComponent(String(item.id))}`,
+      {
+        headers: { Authorization: `Bearer ${ANON_KEY}` },
+        signal: AbortSignal.timeout(4_000), // very fast — only a DB read
+      },
+    );
+
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+
+    if (!data.prefetched) {
+      // Not in DB yet — enqueue background prefetch (fire-and-forget)
+      enqueuePrefetch(item);
+      return { primaryUrl: fallback, publicUrl: fallback, prefetched: false };
+    }
+
+    const primaryUrl = data.primaryUrl ?? fallback;
+    return {
+      primaryUrl,
+      publicUrl: primaryUrl, // backward compat
+      alt1Url: data.alt1Url ?? null,
+      alt2Url: data.alt2Url ?? null,
+      provider: data.provider,
+      prefetched: true,
+    };
+  } catch {
+    // Network issue — use fallback and schedule prefetch silently
+    enqueuePrefetch(item);
+    return { primaryUrl: fallback, publicUrl: fallback, prefetched: false };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// BACKGROUND PREFETCH — admin/seed use or first-time encounter
+// ---------------------------------------------------------------------------
+const _prefetchQueue = new Set<string>();
+
+function enqueuePrefetch(item: {
+  id: number | string;
+  question: string;
+  answer?: string;
+  category?: string;
+  imagePrompt?: string;
+}) {
+  const key = String(item.id);
+  if (_prefetchQueue.has(key)) return; // already in flight
+  _prefetchQueue.add(key);
+
+  // Fire-and-forget — does NOT block the UI
+  triggerPrefetch(item).finally(() => _prefetchQueue.delete(key));
+}
+
+export async function triggerPrefetch(item: {
+  id: number | string;
+  question: string;
+  answer?: string;
+  category?: string;
+  imagePrompt?: string;
+}): Promise<{ primaryUrl: string; provider: string } | null> {
+  try {
+    const eraInfo = categoryToEraInfo(item.category);
+    const kw = extractKeywordsFromText(item.question, item.category);
+    const answerKw = item.answer ? extractKeywordsFromText(item.answer, item.category) : [];
+    const keywords = [...new Set([...(item.answer ? [item.answer] : []), ...answerKw, ...kw])].slice(0, 5);
+    const topic = item.answer ? `${item.answer} — ${eraInfo.topic}` : eraInfo.topic;
+
+    const res = await fetch(`${FUNCTIONS_BASE}/quiz-image/prefetch`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        quizItemId: String(item.id),
+        era: eraInfo.era,
+        topic,
+        keywords,
+      }),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    return { primaryUrl: data.primaryUrl, provider: data.provider };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Prefetch N upcoming questions in the background.
+ * Call this right after the user starts the quiz.
+ */
+export function prefetchUpcoming(
+  items: Array<{ id: number | string; question: string; answer?: string; category?: string }>,
+  count = 5,
+) {
+  items.slice(0, count).forEach((item) => enqueuePrefetch(item));
+}
+
+// ---------------------------------------------------------------------------
+// Admin: swap image (cycle alternates)
+// ---------------------------------------------------------------------------
+export async function swapQuizImage(quizItemId: string | number): Promise<{
+  primaryUrl: string;
+  alt1Url: string | null;
+  alt2Url: string | null;
+} | null> {
+  try {
+    const res = await fetch(`${FUNCTIONS_BASE}/quiz-image/swap`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${ANON_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ quizItemId: String(quizItemId) }),
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Legacy compat — kept so existing imports don't break
 // ---------------------------------------------------------------------------
 export interface QuizImageRequest {
   quizItemId?: string | number;
@@ -155,129 +284,32 @@ export interface QuizImageRequest {
   styleHints?: string;
 }
 
-export interface QuizImageResult {
-  publicUrl: string;
-  cacheKey?: string;
-  status: "ready" | "pending" | "failed" | "fallback";
-  source?: string;
-}
-
-/**
- * Fetch (or generate) an image for a quiz item.
- * Returns a URL immediately; falls back to a local Unsplash URL if the
- * Edge Function is unreachable or fails.
- */
-export async function getQuizImage(
-  req: QuizImageRequest,
-): Promise<QuizImageResult> {
-  // Full URL: /functions/v1/make-server-48be01a5/quiz-image/generate
-  const url = `${FUNCTIONS_BASE}/make-server-48be01a5/quiz-image/generate`;
-
-  // #region agent log
-  fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'quizImageService.ts:getQuizImage',message:'fetch start',data:{url,era:req.era,topic:req.topic,keywords:req.keywords},timestamp:Date.now(),hypothesisId:'A',runId:'debug-1'})}).catch(()=>{});
-  // #endregion
-
+/** @deprecated Use getQuizImageInstant instead */
+export async function getQuizImage(req: QuizImageRequest): Promise<{ publicUrl: string; status: string; source?: string }> {
+  const fallback = DEFAULT_FALLBACK;
   try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${ANON_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        quizItemId: req.quizItemId != null ? String(req.quizItemId) : undefined,
-        era: req.era,
-        topic: req.topic,
-        keywords: req.keywords,
-        styleHints: req.styleHints,
-      }),
-      signal: AbortSignal.timeout(30_000), // 30s — image generation can be slow
-    });
-
-    // Rate limit
-    if (res.status === 429) {
-      console.warn("Quiz image rate limit hit, using fallback");
-      return { publicUrl: DEFAULT_FALLBACK, status: "fallback", source: "rate-limited" };
+    if (req.quizItemId) {
+      const res = await fetch(
+        `${FUNCTIONS_BASE}/quiz-image/by-item?quizItemId=${encodeURIComponent(String(req.quizItemId))}`,
+        { headers: { Authorization: `Bearer ${ANON_KEY}` }, signal: AbortSignal.timeout(4_000) },
+      );
+      if (res.ok) {
+        const d = await res.json();
+        if (d.primaryUrl) return { publicUrl: d.primaryUrl, status: "ready", source: d.provider };
+      }
     }
-
-    // Always read as text first to avoid JSON parse crash on HTML error pages
-    const text = await res.text();
-    const contentType = res.headers.get("content-type") ?? "";
-
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'quizImageService.ts:response',message:'got response',data:{status:res.status,contentType,bodyPreview:text.slice(0,300)},timestamp:Date.now(),hypothesisId:'B',runId:'debug-1'})}).catch(()=>{});
-    // #endregion
-
-    if (!res.ok) {
-      console.error(`getQuizImage HTTP ${res.status}:`, text.slice(0, 300));
-      throw new Error(`HTTP ${res.status}: ${text.slice(0, 200)}`);
-    }
-
-    if (!contentType.includes("application/json")) {
-      console.error("getQuizImage: non-JSON response:", text.slice(0, 300));
-      throw new Error(`Non-JSON response (${contentType}): ${text.slice(0, 100)}`);
-    }
-
-    const data = JSON.parse(text);
-
-    if (data.publicUrl) {
-      return {
-        publicUrl: data.publicUrl,
-        cacheKey: data.cacheKey,
-        status: data.status ?? "ready",
-        source: data.source,
-      };
-    }
-
-    throw new Error(data.error ?? "No publicUrl in response");
-  } catch (err) {
-    // #region agent log
-    fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'quizImageService.ts:catch',message:'error caught',data:{error:String(err)},timestamp:Date.now(),hypothesisId:'C',runId:'debug-1'})}).catch(()=>{});
-    // #endregion
-    console.error("getQuizImage failed:", err);
-    return { publicUrl: DEFAULT_FALLBACK, status: "fallback", source: "error" };
-  }
+  } catch { /* ignore */ }
+  return { publicUrl: fallback, status: "fallback" };
 }
 
-/**
- * Convenience wrapper that accepts a raw quiz item object and derives
- * era/topic/keywords automatically from category, question text, and answer.
- */
+/** @deprecated Use getQuizImageInstant instead */
 export async function getQuizImageFromItem(item: {
   id: number | string;
   question: string;
   answer?: string;
   category?: string;
   imagePrompt?: string;
-}): Promise<QuizImageResult> {
-  const eraInfo = categoryToEraInfo(item.category);
-
-  // Build keywords from BOTH question text AND answer (answer is the most specific signal)
-  const keywordsFromQuestion = extractKeywordsFromText(item.question, item.category);
-
-  // Always include the answer itself as a keyword if it's a meaningful historical term
-  const answerKeywords: string[] = [];
-  if (item.answer && item.answer.length > 0) {
-    answerKeywords.push(item.answer);
-    // Also search for the answer in our keyword map
-    const answerFromMap = extractKeywordsFromText(item.answer, item.category);
-    answerKeywords.push(...answerFromMap);
-  }
-
-  // Merge: answer keywords first (most specific), then question keywords
-  const allKeywords = [...new Set([...answerKeywords, ...keywordsFromQuestion])].slice(0, 5);
-  const finalKeywords = allKeywords.length > 0 ? allKeywords : [item.category ?? "한국역사"];
-
-  // Build a topic string that includes the answer
-  const topic = item.answer
-    ? `${item.answer} — ${eraInfo.topic}`
-    : eraInfo.topic;
-
-  return getQuizImage({
-    quizItemId: item.id,
-    era: eraInfo.era,
-    topic,
-    keywords: finalKeywords,
-    styleHints: item.imagePrompt,
-  });
+}): Promise<{ publicUrl: string; status: string; source?: string }> {
+  const r = await getQuizImageInstant(item);
+  return { publicUrl: r.primaryUrl, status: r.prefetched ? "ready" : "fallback", source: r.provider };
 }

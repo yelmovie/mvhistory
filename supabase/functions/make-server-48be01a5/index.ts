@@ -11,6 +11,9 @@ import {
 import {
   buildCacheKey,
   buildQuizImagePrompt,
+  buildGoogleSearchQuery,
+  isGoogleResultRelevant,
+  sanitizePrompt,
 } from "./prompt_builder.tsx";
 import { checkRateLimit, retryAfterSeconds, pruneExpiredEntries } from "./rate_limiter.tsx";
 
@@ -837,23 +840,76 @@ app.get("/make-server-48be01a5/quiz-image/:questionId", async (c) => {
   }
 });
 
-// ==================== Quiz Image Pipeline (generate-once, reuse-forever) ====================
+// ==================== Quiz Image Pipeline (Search-first → AI fallback) ====================
 
-/**
- * Helper: sleep for `ms` milliseconds (for exponential backoff).
- */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/**
- * Attempt to generate an image via OpenAI gpt-image-1 (low quality).
- * Returns image bytes, or throws on failure.
- * gpt-image-1 returns URL only (no b64_json), so we fetch the URL to get bytes.
- */
+// ---------------------------------------------------------------------------
+// Step 1: Google Custom Search (free quota)
+// Returns a relevant image URL or null
+// ---------------------------------------------------------------------------
+async function searchGoogleImage(
+  query: string,
+  era: string,
+  keywords: string[],
+): Promise<string | null> {
+  const apiKey = Deno.env.get("GOOGLE_SEARCH_API_KEY") ?? Deno.env.get("GOOGLE_API_KEY");
+  const cx = Deno.env.get("GOOGLE_SEARCH_ENGINE_ID") ?? Deno.env.get("GOOGLE_CX");
+
+  if (!apiKey || !cx) {
+    console.warn("Google Search not configured — skipping to AI fallback");
+    return null;
+  }
+
+  const searchUrl = new URL("https://www.googleapis.com/customsearch/v1");
+  searchUrl.searchParams.set("key", apiKey);
+  searchUrl.searchParams.set("cx", cx);
+  searchUrl.searchParams.set("q", query);
+  searchUrl.searchParams.set("searchType", "image");
+  searchUrl.searchParams.set("num", "5");
+  searchUrl.searchParams.set("safe", "active");
+  searchUrl.searchParams.set("imgSize", "large");
+  searchUrl.searchParams.set("gl", "kr");
+  searchUrl.searchParams.set("lr", "lang_ko");
+
+  try {
+    const res = await fetch(searchUrl.toString());
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`Google Search error (${res.status}):`, errText.slice(0, 200));
+      return null;
+    }
+
+    const data = await res.json();
+    const items = (data.items ?? []) as Array<{ link: string; title: string; snippet?: string }>;
+
+    for (const item of items) {
+      if (isGoogleResultRelevant(item, era, keywords)) {
+        console.log(`Google image found: ${item.link}`);
+        return item.link;
+      }
+    }
+
+    console.log("Google Search: no relevant results found");
+    return null;
+  } catch (err) {
+    console.error("Google Search fetch failed:", err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Step 2: OpenAI image generation with cute chibi style
+// Returns image bytes
+// ---------------------------------------------------------------------------
 async function generateOpenAIImage(prompt: string): Promise<Uint8Array> {
   const apiKey = OPENAI_API_KEY();
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+
+  // Ensure the prompt is sanitized for child-safety
+  const safePrompt = sanitizePrompt(prompt);
 
   const res = await fetch("https://api.openai.com/v1/images/generations", {
     method: "POST",
@@ -863,7 +919,7 @@ async function generateOpenAIImage(prompt: string): Promise<Uint8Array> {
     },
     body: JSON.stringify({
       model: "gpt-image-1",
-      prompt,
+      prompt: safePrompt,
       n: 1,
       size: "1024x1024",
       quality: "low",
@@ -877,7 +933,6 @@ async function generateOpenAIImage(prompt: string): Promise<Uint8Array> {
 
   const data = await res.json();
 
-  // gpt-image-1 returns base64 in data[0].b64_json
   const b64 = data?.data?.[0]?.b64_json;
   if (b64) {
     const binaryStr = atob(b64);
@@ -888,7 +943,6 @@ async function generateOpenAIImage(prompt: string): Promise<Uint8Array> {
     return bytes;
   }
 
-  // Fallback: if URL is returned, fetch the bytes
   const imageUrl = data?.data?.[0]?.url;
   if (imageUrl) {
     const imgRes = await fetch(imageUrl);
@@ -897,35 +951,54 @@ async function generateOpenAIImage(prompt: string): Promise<Uint8Array> {
     return new Uint8Array(buffer);
   }
 
-  throw new Error("OpenAI returned no image data (no b64_json, no url)");
+  throw new Error("OpenAI returned no image data");
 }
 
-/**
- * Core image resolution pipeline for a single cache key.
- * 1. Google Search (if available) with relevance check.
- * 2. OpenAI gpt-image-1-mini (low) as fallback.
- * 3. Upload to Supabase Storage.
- * 4. Upsert DB row to status=ready.
- * Returns the public URL.
- */
+// ---------------------------------------------------------------------------
+// Core pipeline: Google Search → OpenAI → Storage → DB
+// Returns public URL
+// ---------------------------------------------------------------------------
 async function resolveAndStoreImage(
   cacheKey: string,
   quizItemId: string | undefined,
   era: string,
   topic: string,
   keywords: string[],
-  styleHints: string | undefined,
   prompt: string,
-): Promise<string> {
+): Promise<{ publicUrl: string; provider: string }> {
   const db = dbClient();
-  let imageBytes: Uint8Array | null = null;
 
-  // --- OpenAI gpt-image-1-mini (low, $0.005/image) with retries ---
+  // --- Try Google Search first ---
+  const googleQuery = buildGoogleSearchQuery(topic, keywords, era);
+  const googleUrl = await searchGoogleImage(googleQuery, era, keywords);
+
+  if (googleUrl) {
+    // Store Google URL directly — no upload needed
+    await db.from("quiz_images").upsert(
+      {
+        cache_key: cacheKey,
+        quiz_item_id: quizItemId ?? null,
+        prompt: null,
+        model: "google",
+        quality: "search",
+        size: "original",
+        storage_bucket: null,
+        storage_path: null,
+        public_url: googleUrl,
+        status: "ready",
+        error: null,
+      },
+      { onConflict: "cache_key" },
+    );
+    console.log(`Image stored [google] → ${googleUrl}`);
+    return { publicUrl: googleUrl, provider: "google" };
+  }
+
+  // --- Fallback: OpenAI generation with retries ---
+  let imageBytes: Uint8Array | null = null;
   let lastErr: unknown;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    if (attempt > 0) {
-      await sleep(500 * Math.pow(2, attempt - 1)); // 500ms, 1000ms
-    }
+    if (attempt > 0) await sleep(500 * Math.pow(2, attempt - 1));
     try {
       imageBytes = await generateOpenAIImage(prompt);
       break;
@@ -936,7 +1009,6 @@ async function resolveAndStoreImage(
   }
 
   if (!imageBytes) {
-    // All retries exhausted — mark failed and return placeholder
     await db.from("quiz_images").upsert(
       {
         cache_key: cacheKey,
@@ -953,10 +1025,10 @@ async function resolveAndStoreImage(
       },
       { onConflict: "cache_key" },
     );
-    return PLACEHOLDER_IMAGE_URL;
+    return { publicUrl: PLACEHOLDER_IMAGE_URL, provider: "placeholder" };
   }
 
-  // --- Upload to Supabase Storage ---
+  // --- Upload to Supabase Storage via supabase-js ---
   const contentType = detectContentType(imageBytes);
   const ext = extensionForContentType(contentType);
   const storagePath = `${cacheKey}/v1.${ext}`;
@@ -968,7 +1040,6 @@ async function resolveAndStoreImage(
     contentType,
   );
 
-  // --- Persist to DB ---
   await db.from("quiz_images").upsert(
     {
       cache_key: cacheKey,
@@ -986,23 +1057,22 @@ async function resolveAndStoreImage(
     { onConflict: "cache_key" },
   );
 
-  console.log(`Image stored [openai] → ${publicUrl}`);
-  return publicUrl;
+  console.log(`Image stored [openai-chibi] → ${publicUrl}`);
+  return { publicUrl, provider: "openai" };
 }
 
-// Prune rate limiter entries every ~100 requests to avoid memory leak
+// Prune rate limiter entries every ~100 requests
 let _pruneCounter = 0;
 
 /**
  * POST /make-server-48be01a5/quiz-image/generate
  *
- * Body: { quizItemId?: string, era: string, topic: string, keywords: string[], styleHints?: string }
+ * Body: { quizItemId?: string, era: string, topic: string, keywords: string[] }
  * Returns: { publicUrl, cacheKey, status, source }
  *
- * Idempotent: same inputs return cached result without re-generating.
+ * Flow: DB cache → Google Search → OpenAI chibi fallback
  */
 app.post("/make-server-48be01a5/quiz-image/generate", async (c) => {
-  // Rate limiting
   const ip = c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ??
     c.req.header("x-real-ip") ?? "unknown";
 
@@ -1010,10 +1080,7 @@ app.post("/make-server-48be01a5/quiz-image/generate", async (c) => {
 
   if (!checkRateLimit(ip, RATE_LIMIT_PER_MIN)) {
     return c.json(
-      {
-        error: "Rate limit exceeded. Please slow down.",
-        retryAfter: retryAfterSeconds(ip),
-      },
+      { error: "Rate limit exceeded.", retryAfter: retryAfterSeconds(ip) },
       429,
     );
   }
@@ -1032,48 +1099,45 @@ app.post("/make-server-48be01a5/quiz-image/generate", async (c) => {
       return c.json({ error: "Missing required fields: era, topic, keywords" }, 400);
     }
 
-    // Build deterministic cache key
     const cacheKey = await buildCacheKey(era, topic, keywords);
-
-    // --- Check DB cache first ---
     const db = dbClient();
+
+    // --- 1) DB cache lookup ---
     const { data: existing } = await db
       .from("quiz_images")
-      .select("*")
+      .select("public_url, status, model")
       .eq("cache_key", cacheKey)
       .maybeSingle();
 
-    if (existing) {
-      if (existing.status === "ready") {
-        return c.json({
-          publicUrl: existing.public_url,
-          cacheKey,
-          status: "ready",
-          source: "db-cache",
-        });
-      }
-      if (existing.status === "pending") {
-        return c.json(
-          {
-            publicUrl: PLACEHOLDER_IMAGE_URL,
-            cacheKey,
-            status: "pending",
-            message: "Image is being generated, please retry in a few seconds.",
-          },
-          202,
-        );
-      }
-      // status=failed → retry generation
+    if (existing?.status === "ready" && existing.public_url) {
+      return c.json({
+        publicUrl: existing.public_url,
+        cacheKey,
+        status: "ready",
+        source: existing.model === "google" ? "google-cache" : "openai-cache",
+      });
     }
 
-    // Mark as pending before long async work (prevents duplicate generation on parallel requests)
+    if (existing?.status === "pending") {
+      return c.json(
+        {
+          publicUrl: PLACEHOLDER_IMAGE_URL,
+          cacheKey,
+          status: "pending",
+          message: "Image is being generated, please retry in a few seconds.",
+        },
+        202,
+      );
+    }
+
+    // --- 2) Mark as pending ---
     const prompt = buildQuizImagePrompt(era, topic, keywords, styleHints);
     await db.from("quiz_images").upsert(
       {
         cache_key: cacheKey,
         quiz_item_id: quizItemId ?? null,
         prompt,
-        model: "gpt-image-1",
+        model: "pending",
         quality: "low",
         size: "1024x1024",
         storage_bucket: STORAGE_BUCKET,
@@ -1085,18 +1149,17 @@ app.post("/make-server-48be01a5/quiz-image/generate", async (c) => {
       { onConflict: "cache_key" },
     );
 
-    // Resolve image (Google → AI → Storage → DB)
-    const publicUrl = await resolveAndStoreImage(
+    // --- 3) Resolve: Google → OpenAI chibi ---
+    const { publicUrl, provider } = await resolveAndStoreImage(
       cacheKey,
       quizItemId,
       era,
       topic,
       keywords,
-      styleHints,
       prompt,
     );
 
-    return c.json({ publicUrl, cacheKey, status: "ready", source: "generated" });
+    return c.json({ publicUrl, cacheKey, status: "ready", source: provider });
   } catch (error: any) {
     console.error("quiz-image/generate error:", error);
     return c.json({ error: error.message }, 500);
@@ -1105,14 +1168,12 @@ app.post("/make-server-48be01a5/quiz-image/generate", async (c) => {
 
 /**
  * GET /make-server-48be01a5/quiz-image/cache?cacheKey=...
- * Debug endpoint: returns the DB row for a given cache key.
+ * Debug endpoint
  */
 app.get("/make-server-48be01a5/quiz-image/cache", async (c) => {
   try {
     const cacheKey = c.req.query("cacheKey");
-    if (!cacheKey) {
-      return c.json({ error: "Missing query param: cacheKey" }, 400);
-    }
+    if (!cacheKey) return c.json({ error: "Missing query param: cacheKey" }, 400);
 
     const db = dbClient();
     const { data, error } = await db
@@ -1122,11 +1183,223 @@ app.get("/make-server-48be01a5/quiz-image/cache", async (c) => {
       .maybeSingle();
 
     if (error) throw error;
-    if (!data) {
-      return c.json({ error: "No record found for this cacheKey" }, 404);
-    }
+    if (!data) return c.json({ error: "No record found for this cacheKey" }, 404);
 
     return c.json({ success: true, data });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+// ==================== Prefetch Endpoint (admin/seed — never called during gameplay) ====================
+
+/**
+ * POST /make-server-48be01a5/quiz-image/prefetch
+ *
+ * Admin/seed endpoint. Calls Google Custom Search once, picks the best
+ * image (+ up to 2 alternates), and stores all URLs in quiz_images.
+ * During gameplay the UI reads primary_url directly without any API call.
+ *
+ * Body: { quizItemId: string, era: string, topic: string, keywords: string[] }
+ * Returns: { primaryUrl, alt1Url, alt2Url, provider, cacheKey }
+ */
+app.post("/make-server-48be01a5/quiz-image/prefetch", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { quizItemId, era, topic, keywords } = body as {
+      quizItemId: string;
+      era: string;
+      topic: string;
+      keywords: string[];
+    };
+
+    if (!quizItemId || !era || !topic || !Array.isArray(keywords) || keywords.length === 0) {
+      return c.json({ error: "Missing required fields: quizItemId, era, topic, keywords" }, 400);
+    }
+
+    const cacheKey = await buildCacheKey(era, topic, keywords);
+    const db = dbClient();
+
+    // Return cached result immediately if already prefetched
+    const { data: existing } = await db
+      .from("quiz_images")
+      .select("primary_url, alt1_url, alt2_url, provider, cache_key")
+      .eq("quiz_item_id", quizItemId)
+      .eq("status", "ready")
+      .maybeSingle();
+
+    if (existing?.primary_url) {
+      return c.json({
+        primaryUrl: existing.primary_url,
+        alt1Url: existing.alt1_url ?? null,
+        alt2Url: existing.alt2_url ?? null,
+        provider: existing.provider,
+        cacheKey: existing.cache_key,
+        cached: true,
+      });
+    }
+
+    // --- Google Custom Search: fetch up to 5 results, pick top 3 relevant ---
+    const apiKey = Deno.env.get("GOOGLE_SEARCH_API_KEY") ?? Deno.env.get("GOOGLE_API_KEY");
+    const cx = Deno.env.get("GOOGLE_SEARCH_ENGINE_ID") ?? Deno.env.get("GOOGLE_CX");
+
+    let primaryUrl = PLACEHOLDER_IMAGE_URL;
+    let alt1Url: string | null = null;
+    let alt2Url: string | null = null;
+    let sourceUrl: string | null = null;
+    let provider = "placeholder";
+
+    if (apiKey && cx) {
+      const searchUrl = new URL("https://www.googleapis.com/customsearch/v1");
+      searchUrl.searchParams.set("key", apiKey);
+      searchUrl.searchParams.set("cx", cx);
+      searchUrl.searchParams.set("q", buildGoogleSearchQuery(topic, keywords, era));
+      searchUrl.searchParams.set("searchType", "image");
+      searchUrl.searchParams.set("num", "8");
+      searchUrl.searchParams.set("safe", "active");
+      searchUrl.searchParams.set("imgSize", "large");
+      searchUrl.searchParams.set("gl", "kr");
+
+      try {
+        const searchRes = await fetch(searchUrl.toString());
+        if (searchRes.ok) {
+          const searchData = await searchRes.json();
+          const items = (searchData.items ?? []) as Array<{
+            link: string; title: string; snippet?: string; image?: { contextLink?: string };
+          }>;
+
+          const relevant = items.filter((item) => isGoogleResultRelevant(item, era, keywords));
+
+          if (relevant.length > 0) {
+            primaryUrl = relevant[0].link;
+            sourceUrl = relevant[0].image?.contextLink ?? relevant[0].link;
+            alt1Url = relevant[1]?.link ?? null;
+            alt2Url = relevant[2]?.link ?? null;
+            provider = "google";
+            console.log(`Prefetch [google] ${quizItemId}: ${primaryUrl}`);
+          }
+        }
+      } catch (searchErr) {
+        console.error("Google Search failed during prefetch:", searchErr);
+      }
+    }
+
+    // Store all URLs in DB
+    const prompt = buildQuizImagePrompt(era, topic, keywords);
+    await db.from("quiz_images").upsert(
+      {
+        cache_key: cacheKey,
+        quiz_item_id: quizItemId,
+        prompt,
+        model: provider === "google" ? "google" : "placeholder",
+        quality: "search",
+        size: "original",
+        storage_bucket: null,
+        storage_path: null,
+        public_url: primaryUrl,     // backward-compat column
+        primary_url: primaryUrl,
+        alt1_url: alt1Url,
+        alt2_url: alt2Url,
+        source_url: sourceUrl,
+        provider,
+        status: "ready",
+        error: null,
+      },
+      { onConflict: "cache_key" },
+    );
+
+    return c.json({
+      primaryUrl,
+      alt1Url,
+      alt2Url,
+      provider,
+      cacheKey,
+      cached: false,
+    });
+  } catch (error: any) {
+    console.error("quiz-image/prefetch error:", error);
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+/**
+ * GET /make-server-48be01a5/quiz-image/by-item?quizItemId=...
+ *
+ * Instant read during gameplay — NO API calls, just a DB read.
+ * Returns the stored primary_url, alt1_url, alt2_url immediately.
+ */
+app.get("/make-server-48be01a5/quiz-image/by-item", async (c) => {
+  try {
+    const quizItemId = c.req.query("quizItemId");
+    if (!quizItemId) return c.json({ error: "Missing quizItemId" }, 400);
+
+    const db = dbClient();
+    const { data } = await db
+      .from("quiz_images")
+      .select("primary_url, alt1_url, alt2_url, provider, cache_key, status, public_url")
+      .eq("quiz_item_id", quizItemId)
+      .maybeSingle();
+
+    if (!data) {
+      // Not prefetched yet — return placeholder, client will enqueue background prefetch
+      return c.json({ primaryUrl: PLACEHOLDER_IMAGE_URL, provider: "placeholder", prefetched: false });
+    }
+
+    const primaryUrl = data.primary_url ?? data.public_url ?? PLACEHOLDER_IMAGE_URL;
+    return c.json({
+      primaryUrl,
+      alt1Url: data.alt1_url ?? null,
+      alt2Url: data.alt2_url ?? null,
+      provider: data.provider ?? "unknown",
+      cacheKey: data.cache_key,
+      prefetched: data.status === "ready",
+    });
+  } catch (error: any) {
+    return c.json({ error: error.message }, 500);
+  }
+});
+
+/**
+ * POST /make-server-48be01a5/quiz-image/swap
+ *
+ * Admin: cycle primary_url among alternates (no API call).
+ * Body: { quizItemId: string }
+ * Returns: { primaryUrl, alt1Url, alt2Url }
+ */
+app.post("/make-server-48be01a5/quiz-image/swap", async (c) => {
+  try {
+    const body = await c.req.json();
+    const { quizItemId } = body as { quizItemId: string };
+    if (!quizItemId) return c.json({ error: "Missing quizItemId" }, 400);
+
+    const db = dbClient();
+    const { data, error: fetchError } = await db
+      .from("quiz_images")
+      .select("primary_url, alt1_url, alt2_url, cache_key")
+      .eq("quiz_item_id", quizItemId)
+      .maybeSingle();
+
+    if (fetchError) throw fetchError;
+    if (!data) return c.json({ error: "No prefetched image found for this quiz item" }, 404);
+
+    // Rotate: primary → alt2, alt1 → primary, alt2 → alt1
+    const next = data.alt1_url ?? data.primary_url;
+    const newAlt1 = data.alt2_url ?? data.primary_url;
+    const newAlt2 = data.primary_url;
+
+    const { error: updateError } = await db
+      .from("quiz_images")
+      .update({
+        primary_url: next,
+        public_url: next,
+        alt1_url: newAlt1,
+        alt2_url: newAlt2,
+      })
+      .eq("quiz_item_id", quizItemId);
+
+    if (updateError) throw updateError;
+
+    return c.json({ primaryUrl: next, alt1Url: newAlt1, alt2Url: newAlt2 });
   } catch (error: any) {
     return c.json({ error: error.message }, 500);
   }

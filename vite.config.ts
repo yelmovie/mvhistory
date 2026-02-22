@@ -10,6 +10,12 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
+  server: {
+    // Ensure correct charset is sent for all HTML responses
+    headers: {
+      'Content-Type': 'text/html; charset=UTF-8',
+    },
+  },
   resolve: {
     alias: {
       // Alias @ to the src directory

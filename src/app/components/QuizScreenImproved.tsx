@@ -8,8 +8,10 @@ import {
 import confetti from "canvas-confetti";
 import { imageCacheService } from "../utils/imageCache";
 import {
-  getQuizImageFromItem,
+  getQuizImageInstant,
   getFallbackImageUrl,
+  prefetchUpcoming,
+  type QuizImageResult,
 } from "../utils/quizImageService";
 import { checkSpellingSimilarity } from "../data/quizData";
 import { PointsBadge } from "./gamification/PointsBadge";
@@ -31,8 +33,10 @@ interface QuizScreenProps {
     answer: string;
     explanation?: string;
     imagePrompt?: string;
-    category?: string; // Add category field
+    category?: string;
   };
+  /** Id of the NEXT question — used only for preloading its image, no rendering */
+  nextQuestionId?: number;
   currentQuestion: number;
   totalQuestions: number;
   onSubmitAnswer: (answer: string, hintsUsed: number) => void;
@@ -49,6 +53,7 @@ interface QuizScreenProps {
 
 export function QuizScreen({
   question,
+  nextQuestionId,
   currentQuestion,
   totalQuestions,
   onSubmitAnswer,
@@ -62,6 +67,7 @@ export function QuizScreen({
   const [showHints, setShowHints] = useState(false);
   const [questionImage, setQuestionImage] = useState<string>("");
   const [imageLoading, setImageLoading] = useState(true);
+  const [nextImageUrl, setNextImageUrl] = useState<string | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
   const [submittedAnswer, setSubmittedAnswer] = useState("");
@@ -173,7 +179,7 @@ export function QuizScreen({
     return categoryImages[category || ''] || 'https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=1200&q=80';
   };
 
-  // Load image via generate-once / reuse-forever pipeline
+  // Instant image load — reads from DB only, no API generation at play time
   useEffect(() => {
     // Reset UI state for new question
     setShowResult(false);
@@ -188,43 +194,52 @@ export function QuizScreen({
     setGeneratedHints([]);
     setHintLoading(false);
 
+    // Show category placeholder immediately — never blank
+    setQuestionImage(getFallbackImageUrl(question.category));
+    setImageLoading(true);
+
     let cancelled = false;
 
-    const loadImage = async () => {
-      setImageLoading(true);
-      // Show category fallback immediately so UI is never blank
-      setQuestionImage(getFallbackImageUrl(question.category));
-
-      try {
-        const result = await getQuizImageFromItem({
-          id: question.id,
-          question: question.question,
-          answer: question.answer,
-          category: question.category,
-          imagePrompt: (question as any).imagePrompt,
-        });
-
-        if (!cancelled) {
-          setQuestionImage(result.publicUrl);
-        }
-      } catch (err) {
-        console.error("Failed to load quiz image:", err);
-        if (!cancelled) {
-          setQuestionImage(getFallbackImageUrl(question.category));
-        }
-      } finally {
-        if (!cancelled) {
-          setImageLoading(false);
-        }
+    getQuizImageInstant({
+      id: question.id,
+      question: question.question,
+      answer: question.answer,
+      category: question.category,
+      imagePrompt: (question as any).imagePrompt,
+    }).then((result) => {
+      if (!cancelled) {
+        setQuestionImage(result.primaryUrl);
+        // imageLoading stays true until <img onLoad> fires
       }
-    };
+    }).catch(() => {
+      // fallback already set above
+      if (!cancelled) setImageLoading(false);
+    });
 
-    loadImage();
+    return () => { cancelled = true; };
+  }, [question.id]);
 
+  // Preload next question image via <link rel="preload"> injected into <head>
+  useEffect(() => {
+    if (!nextQuestionId) { setNextImageUrl(null); return; }
+    let cancelled = false;
+    getQuizImageInstant({ id: nextQuestionId, question: "", category: question.category }).then((r) => {
+      if (cancelled || !r.prefetched) return;
+      setNextImageUrl(r.primaryUrl);
+      // Inject preload link tag into document head
+      const link = document.createElement("link");
+      link.rel = "preload";
+      link.as = "image";
+      link.href = r.primaryUrl;
+      link.setAttribute("data-quiz-preload", String(nextQuestionId));
+      document.head.appendChild(link);
+    }).catch(() => {});
     return () => {
       cancelled = true;
+      // Remove old preload link when question changes
+      document.querySelectorAll(`link[data-quiz-preload="${nextQuestionId}"]`).forEach((el) => el.remove());
     };
-  }, [question.id]);
+  }, [nextQuestionId]);
 
   const handleShowHint = async () => {
     if (currentHint < 3) { // 최대 3개의 힌트
@@ -517,7 +532,7 @@ export function QuizScreen({
           } rounded-[24px] p-6 sm:p-8`}
           style={{ boxShadow: 'var(--shadow-lg)' }}
         >
-          {/* Question Image with Border */}
+          {/* Question Image — instant render with skeleton placeholder */}
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -525,38 +540,27 @@ export function QuizScreen({
             className={`relative w-full aspect-video rounded-[20px] overflow-hidden mb-6 border-4 ${
               darkMode ? 'border-[#334155]' : 'border-[#E5E7EB]'
             }`}
-            style={{ 
-              boxShadow: '0 8px 32px -8px rgba(0, 0, 0, 0.2)',
-            }}
+            style={{ boxShadow: '0 8px 32px -8px rgba(0, 0, 0, 0.2)' }}
           >
+            {/* Animated skeleton — shown until image fires onLoad */}
             {imageLoading && (
-              <div className={`absolute inset-0 flex items-center justify-center z-10 ${
-                darkMode ? 'bg-[#334155]' : 'bg-[#F3F4F6]'
-              }`}>
-                <motion.div
-                  animate={{ rotate: 360 }}
-                  transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-                  className="text-[#6366F1]"
-                >
-                  <div className="w-12 h-12 border-4 border-[#6366F1] border-t-transparent rounded-full" />
-                </motion.div>
+              <div className={`absolute inset-0 z-10 ${darkMode ? 'bg-[#1E293B]' : 'bg-[#F3F4F6]'}`}>
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-[shimmer_1.4s_infinite]"
+                  style={{ backgroundSize: '200% 100%', animation: 'shimmer 1.4s infinite linear' }} />
+                <style>{`@keyframes shimmer { 0%{background-position:-200% 0} 100%{background-position:200% 0} }`}</style>
               </div>
             )}
-            {questionImage ? (
+
+            {/* Eager-load image — shows over skeleton once loaded */}
+            {questionImage && (
               <ImageWithFallback
                 src={questionImage}
                 alt="Question illustration"
-                className="w-full h-full object-cover"
+                className={`w-full h-full object-cover transition-opacity duration-300 ${imageLoading ? 'opacity-0' : 'opacity-100'}`}
+                loading="eager"
                 onLoad={() => setImageLoading(false)}
+                onError={() => setImageLoading(false)}
               />
-            ) : (
-              <div className={`absolute inset-0 flex items-center justify-center ${
-                darkMode ? 'bg-[#334155]' : 'bg-[#F3F4F6]'
-              }`}>
-                <ImageIcon className={`w-16 h-16 ${
-                  darkMode ? 'text-[#64748B]' : 'text-[#9CA3AF]'
-                }`} strokeWidth={2} />
-              </div>
             )}
           </motion.div>
 

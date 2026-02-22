@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AnimatedBackground } from "./components/AnimatedBackground";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import { LoginModal } from "./components/LoginModal";
@@ -19,6 +19,7 @@ import { ArtifactExpert } from "./components/ArtifactExpert";
 import { quizData, characters as initialCharacters } from "./data/quizData";
 import type { Character } from "./data/quizData";
 import { mapAllQuizzesToCharacters } from "./utils/quizCharacterMapping";
+import { prefetchUpcoming } from "./utils/quizImageService";
 import { 
   initializeUserSession, 
   getCurrentUserId, 
@@ -148,6 +149,10 @@ export default function App() {
     setCorrectAnswers(0);
     setWrongAnswers([]);
     setCurrentScreen('quiz');
+
+    // Prefetch next 8 question images in background (fire-and-forget)
+    const qs = (mappedQuizData[period] || []).filter(q => !completedQuestions.includes(q.id));
+    prefetchUpcoming(qs, 8);
   };
 
   const handleSubmitAnswer = async (userAnswer: string, hintsUsed: number) => {
@@ -454,6 +459,7 @@ export default function App() {
         {currentScreen === 'quiz' && currentQuestion && (
           <QuizScreen
             question={currentQuestion}
+            nextQuestionId={currentQuestions[currentQuestionIndex + 1]?.id}
             currentQuestion={currentQuestionIndex + 1}
             totalQuestions={currentQuestions.length}
             onSubmitAnswer={handleSubmitAnswer}
