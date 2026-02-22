@@ -591,7 +591,72 @@ app.post("/make-server-48be01a5/generate-character-image", async (c) => {
   }
 });
 
-// ==================== Image Search (Curated Images) ====================
+// ==================== Image Search (Google Custom Search API) ====================
+
+// Google Custom Search API를 사용하여 퀴즈/인물 이미지를 검색합니다.
+// 필요한 환경변수: GOOGLE_API_KEY, GOOGLE_CX
+async function searchGoogleImage(query: string): Promise<string | null> {
+  const apiKey = Deno.env.get('GOOGLE_API_KEY');
+  const cx = Deno.env.get('GOOGLE_CX');
+
+  if (!apiKey || !cx) {
+    console.warn('GOOGLE_API_KEY or GOOGLE_CX not configured');
+    return null;
+  }
+
+  const searchQuery = `${query} 한국 역사`;
+  const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(searchQuery)}&searchType=image&num=3&safe=active&imgSize=large&gl=kr&lr=lang_ko`;
+
+  const response = await fetch(url);
+  if (!response.ok) {
+    const errText = await response.text();
+    console.error('Google Custom Search API error:', response.status, errText);
+    return null;
+  }
+
+  const data = await response.json();
+  const items: Array<{ link: string }> = data.items || [];
+  if (items.length === 0) return null;
+
+  // 첫 번째 이미지 URL 반환
+  return items[0].link;
+}
+
+// 인물 이미지 Google 검색 엔드포인트
+app.post("/make-server-48be01a5/search-character-image", async (c) => {
+  try {
+    const { characterName, period } = await c.req.json();
+
+    if (!characterName) {
+      return c.json({ error: 'Missing required parameter: characterName' }, 400);
+    }
+
+    // 캐시 확인
+    const cacheKey = `image:character:${characterName}`;
+    const cached = await kv.get(cacheKey);
+    if (cached && cached.url) {
+      return c.json({ success: true, imageUrl: cached.url, source: 'cache' });
+    }
+
+    const query = period ? `${characterName} ${period} 역사 인물` : `${characterName} 역사 인물 한국`;
+    const imageUrl = await searchGoogleImage(query);
+
+    if (imageUrl) {
+      await kv.set(cacheKey, { url: imageUrl, query, timestamp: new Date().toISOString() });
+      return c.json({ success: true, imageUrl, source: 'google' });
+    }
+
+    // 폴백: 기본 이미지
+    return c.json({
+      success: true,
+      imageUrl: 'https://images.unsplash.com/photo-1578648693974-9438ebc063bb?w=800&q=80',
+      source: 'fallback'
+    });
+  } catch (error: any) {
+    console.error('Search character image error:', error);
+    return c.json({ success: false, error: error.message }, 500);
+  }
+});
 
 // Get appropriate image for quiz question
 app.post("/make-server-48be01a5/search-image", async (c) => {
@@ -617,7 +682,26 @@ app.post("/make-server-48be01a5/search-image", async (c) => {
       });
     }
 
-    // Map Korean queries to curated Unsplash image URLs
+    // Google Custom Search API로 실제 이미지 검색
+    const googleImageUrl = await searchGoogleImage(query);
+
+    if (googleImageUrl) {
+      await kv.set(cacheKey, {
+        url: googleImageUrl,
+        query,
+        source: 'google',
+        timestamp: new Date().toISOString()
+      });
+      console.log('Google 이미지 검색 성공:', query);
+      return c.json({
+        success: true,
+        imageUrl: googleImageUrl,
+        query,
+        source: 'google'
+      });
+    }
+
+    // Google API 키가 없거나 검색 실패 시 큐레이션 이미지 폴백
     const imageMap: Record<string, string> = {
       '고조선': 'https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=1200&q=80',
       '단군': 'https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=1200&q=80',
@@ -658,8 +742,7 @@ app.post("/make-server-48be01a5/search-image", async (c) => {
       '혼천의': 'https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=1200&q=80'
     };
 
-    // Find matching image or use default
-    let imageUrl = 'https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=1200&q=80'; // Default Korean traditional
+    let imageUrl = 'https://images.unsplash.com/photo-1528819622765-d6bcf132f793?w=1200&q=80';
     let matchedKey = 'default';
     
     for (const [keyword, url] of Object.entries(imageMap)) {
@@ -670,23 +753,18 @@ app.post("/make-server-48be01a5/search-image", async (c) => {
       }
     }
 
-    console.log(`Found image for keyword "${matchedKey}" from query:`, query);
-
-    // Cache the result
     await kv.set(cacheKey, {
       url: imageUrl,
-      query: query,
-      matchedKey: matchedKey,
+      query,
+      matchedKey,
       timestamp: new Date().toISOString()
     });
-
-    console.log('Successfully cached image for question:', questionId);
     
     return c.json({ 
       success: true,
       imageUrl,
-      query: query,
-      matchedKey: matchedKey,
+      query,
+      matchedKey,
       source: 'curated'
     });
     

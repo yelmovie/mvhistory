@@ -26,9 +26,9 @@ interface WelcomeScreenProps {
   onLogout?: () => void;
   userProfile?: UserProfile | null;
   isLoadingProfile?: boolean;
-  /** ??? ? ?? ??? ?? ???? ??? ?? */
+  /** 로그인 후 학습 시작을 자동 실행하기 위한 플래그 */
   pendingStart?: boolean;
-  /** pendingStart ?? ? ??? ?? */
+  /** pendingStart 해제 시 호출할 콜백 */
   onClearPendingStart?: () => void;
 }
 
@@ -47,9 +47,21 @@ export function WelcomeScreen({
   pendingStart = false,
   onClearPendingStart
 }: WelcomeScreenProps) {
+  // #region agent log
+  useEffect(() => {
+    const bodyFont = window.getComputedStyle(document.body).fontFamily;
+    const htmlLang = document.documentElement.lang;
+    document.fonts.ready.then((fontFaceSet) => {
+      const loadedFonts: string[] = [];
+      fontFaceSet.forEach((f) => { loadedFonts.push(`${f.family} ${f.weight} ${f.style} [${f.status}]`); });
+      fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'WelcomeScreen.tsx:55',message:'Font diagnostic post-fix',data:{bodyFont,htmlLang,loadedFonts,fontsCount:loadedFonts.length},timestamp:Date.now(),hypothesisId:'A-B-D',runId:'post-fix'})}).catch(()=>{});
+    });
+  }, []);
+  // #endregion
+
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // ??? ?? ? pendingStart? ??? ???? ?? ??
+  // 로그인 완료 후 pendingStart가 있으면 자동으로 학습 시작
   useEffect(() => {
     if (pendingStart && currentUser) {
       onClearPendingStart?.();
@@ -57,7 +69,7 @@ export function WelcomeScreen({
     }
   }, [pendingStart, currentUser]);
 
-  // ?? ?? ?? ???: ?????? ??? ?? ?? ??
+  // 학습 시작 핸들러: 로그인되지 않은 경우 로그인 모달 열기
   const handleStartLearning = () => {
     if (!currentUser) {
       onOpenLogin?.();
@@ -203,10 +215,10 @@ export function WelcomeScreen({
               </div>
               <div>
                 <h1 className="font-bold text-xl bg-gradient-to-r from-[#2563EB] to-[#4F46E5] bg-clip-text text-transparent">
-                  AI ??? ??
+                  AI 한국사 여행
                 </h1>
                 <p className={`text-xs ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'}`}>
-                  ????? ?? ?? ??
+                  초등학생을 위한 역사 학습
                 </p>
               </div>
             </motion.div>
@@ -279,7 +291,7 @@ export function WelcomeScreen({
                   }}
                 >
                   <LogIn className="w-4 h-4" strokeWidth={2} />
-                  <span>???</span>
+                  <span>로그인</span>
                 </motion.button>
               )}
             </div>
@@ -308,7 +320,7 @@ export function WelcomeScreen({
                       <span className={`text-xs font-bold ${
                         darkMode ? 'text-white' : 'text-[#1F2937]'
                       }`}>
-                        ?? {userStats.level}
+                        레벨 {userStats.level}
                       </span>
                     </div>
                     <span className={`text-xs ${
@@ -345,7 +357,7 @@ export function WelcomeScreen({
                       <span className={`text-xs font-bold ${
                         darkMode ? 'text-white' : 'text-[#1F2937]'
                       }`}>
-                        ?? ??
+                        카드 수집
                       </span>
                     </div>
                     <span className={`text-xs ${
@@ -383,7 +395,7 @@ export function WelcomeScreen({
                         <span className={`text-xs font-bold ${
                           darkMode ? 'text-white' : 'text-[#1F2937]'
                         }`}>
-                          {userStats.streak}? ??
+                          {userStats.streak}일 연속
                         </span>
                       </div>
                     </div>
@@ -435,15 +447,15 @@ export function WelcomeScreen({
 
               <h2 className="font-bold leading-tight mb-4 text-5xl md:text-6xl">
                 <span className="bg-gradient-to-r from-[#2563EB] to-[#4F46E5] bg-clip-text text-transparent">
-                  AI? ??? ???
+                  AI와 함께 떠나는
                 </span>
                 <br />
                 <span className={darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}>
-                  ??? ????! ??
+                  즐거운 한국사 여행! 🚀
                 </span>
               </h2>
               <p className={`text-xl md:text-2xl mb-10 ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} max-w-3xl mx-auto`}>
-                ??? ?? ?? ??? ????, ??? ?? ??? ?????! ??
+                퀴즈를 풀고 인물 카드를 모으며, 역사 속 위인과 대화해보세요! ✨
               </p>
 
               {/* CTA Button */}
@@ -459,7 +471,7 @@ export function WelcomeScreen({
               >
                 <div className="absolute inset-0 bg-gradient-to-r from-[#D97706] via-[#DB2777] to-[#4F46E5] opacity-0 group-hover:opacity-100 transition-opacity" />
                 <span className="relative flex items-center gap-3">
-                  {currentUser ? '?? ????' : '??? ? ????'}
+                  {currentUser ? '학습 시작하기' : '로그인 후 시작하기'}
                   {currentUser ? (
                     <ArrowRight className="w-6 h-6 group-hover:translate-x-1 transition-transform" strokeWidth={2} />
                   ) : (
@@ -468,7 +480,7 @@ export function WelcomeScreen({
                 </span>
               </motion.button>
 
-              {/* ??? ?? ??? */}
+              {/* 로그인 안내 메시지 */}
               {!currentUser && (
                 <motion.p
                   initial={{ opacity: 0 }}
@@ -476,7 +488,7 @@ export function WelcomeScreen({
                   transition={{ delay: 0.4 }}
                   className={`mt-3 text-sm ${darkMode ? 'text-[#94A3B8]' : 'text-[#9CA3AF]'}`}
                 >
-                  ????? ?? ??? ?? ??? ????? ?
+                  로그인하면 학습 기록과 카드를 저장할 수 있어요
                 </motion.p>
               )}
 
@@ -487,14 +499,14 @@ export function WelcomeScreen({
                   animate={{ y: [-10, 10, -10] }}
                   transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
                 >
-                  ??
+                  📚
                 </motion.span>
                 <motion.span
                   className="absolute right-1/4 text-4xl"
                   animate={{ y: [10, -10, 10] }}
                   transition={{ duration: 3, repeat: Infinity, ease: "easeInOut", delay: 0.5 }}
                 >
-                  ?
+                  🎯
                 </motion.span>
               </div>
             </motion.div>
@@ -508,7 +520,7 @@ export function WelcomeScreen({
             className="mb-20"
           >
             <h3 className={`font-bold mb-6 text-3xl ${darkMode ? 'text-white' : 'text-[#1F2937]'} text-center`}>
-              ??? ??????
+              어떻게 학습하나요?
             </h3>
             
             <div className="grid gap-4 md:grid-cols-3">
@@ -547,13 +559,13 @@ export function WelcomeScreen({
                     </div>
                   </div>
                   <h4 className={`font-bold mb-2 text-2xl ${darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}`}>
-                    ?? ?? ??
+                    역사 퀴즈 풀기
                   </h4>
                   <p className={`text-base ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} mb-4`}>
-                    500?? ??? ?? ??? ??? ???? ?????!
+                    500개 이상의 재미있는 역사 퀴즈를 풀면서 실력을 키워보세요!
                   </p>
                   <div className={`flex items-center gap-2 ${darkMode ? 'text-[#60A5FA]' : 'text-[#2563EB]'}`}>
-                    <span className="text-sm font-bold">?? ????</span>
+                    <span className="text-sm font-bold">퀴즈 시작하기</span>
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeWidth={2} />
                   </div>
                 </div>
@@ -594,13 +606,13 @@ export function WelcomeScreen({
                     </div>
                   </div>
                   <h4 className={`font-bold mb-2 text-2xl ${darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}`}>
-                    ?? ??? ??
+                    위인과 대화하기
                   </h4>
                   <p className={`text-base ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} mb-4`}>
-                    AI ?? ??? ?? ????, ??? ?? ???? ?????!
+                    AI 기반 역사 속 위인과 직접 대화하며, 당시 시대를 생생히 느껴보세요!
                   </p>
                   <div className={`flex items-center gap-2 ${darkMode ? 'text-[#60A5FA]' : 'text-[#2563EB]'}`}>
-                    <span className="text-sm font-bold">?? ??</span>
+                    <span className="text-sm font-bold">대화 시작</span>
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeWidth={2} />
                   </div>
                 </div>
@@ -641,10 +653,10 @@ export function WelcomeScreen({
                     </div>
                   </div>
                   <h4 className={`font-bold mb-2 text-2xl ${darkMode ? 'text-[#F9FAFB]' : 'text-[#111827]'}`}>
-                    ?? ?? ??
+                    인물 카드 수집
                   </h4>
                   <p className={`text-base ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'} mb-4`}>
-                    ?? ? ?? ?? 210?? ??? ?? ???? ?????!
+                    퀴즈를 풀고 대화를 나누며 총 210명의 위인 카드를 모아보세요!
                   </p>
 
                   <div 
@@ -657,14 +669,14 @@ export function WelcomeScreen({
                     <p className={`text-xs ${
                       darkMode ? 'text-[#93C5FD]' : 'text-[#2563EB]'
                     }`}>
-                      ?? ?? 5? ?? ???? ??? 10? ???? ?? ??!
+                      퀴즈 정답 5개 맞추면 카드 1장, 대화 10번 하면 특별 카드 획득!
                     </p>
                   </div>
 
                   <div className={`flex items-center gap-2 ${
                     darkMode ? 'text-[#60A5FA]' : 'text-[#2563EB]'
                   }`}>
-                    <span className="text-sm font-bold">??? ??</span>
+                    <span className="text-sm font-bold">컬렉션 보기</span>
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" strokeWidth={2} />
                   </div>
                 </div>
@@ -680,7 +692,7 @@ export function WelcomeScreen({
           >
             <div className="flex items-center justify-between mb-6">
               <h3 className={`font-bold text-3xl ${darkMode ? 'text-white' : 'text-[#1F2937]'}`}>
-                ?? ??? ?? ??
+                더 많은 학습 도구
               </h3>
               <div className="flex gap-2">
                 <motion.button
@@ -727,7 +739,7 @@ export function WelcomeScreen({
                 <div className="aspect-[4/3] relative overflow-hidden">
                   <ImageWithFallback 
                     src={goodsImage}
-                    alt="AI ?? ?? ???"
+                    alt="AI 역사 굿즈 만들기"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className={`absolute inset-0 ${
@@ -750,12 +762,12 @@ export function WelcomeScreen({
                   <h4 className={`font-bold text-lg mb-2 ${
                     darkMode ? 'text-white' : 'text-[#1F2937]'
                   } group-hover:text-[#8B5CF6] transition-colors`}>
-                    AI ?? ?? ??? ?
+                    AI 역사 굿즈 만들기 🎨
                   </h4>
                   <p className={`text-sm ${
                     darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
                   }`}>
-                    ?? ??? ??? ??? ???? ??? ??????!
+                    나만의 역사 캐릭터 굿즈를 AI로 직접 만들어 보세요!
                   </p>
                 </div>
               </motion.button>
@@ -774,7 +786,7 @@ export function WelcomeScreen({
                 <div className="aspect-[4/3] relative overflow-hidden">
                   <ImageWithFallback 
                     src={museumImage}
-                    alt="??????? ????"
+                    alt="국립중앙박물관 가상투어"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className={`absolute inset-0 ${
@@ -797,12 +809,12 @@ export function WelcomeScreen({
                   <h4 className={`font-bold text-lg mb-2 ${
                     darkMode ? 'text-white' : 'text-[#1F2937]'
                   } group-hover:text-[#6366F1] transition-colors`}>
-                    ??????? ???? ???
+                    국립중앙박물관 가상 투어 🏛️
                   </h4>
                   <p className={`text-sm ${
                     darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
                   }`}>
-                    ???? ?? ???? ???? ???? ???? ?????!
+                    집에서도 박물관을 직접 방문하는 것처럼 생생하게 둘러보세요!
                   </p>
                 </div>
               </motion.button>
@@ -821,7 +833,7 @@ export function WelcomeScreen({
                 <div className="aspect-[4/3] relative overflow-hidden">
                   <ImageWithFallback 
                     src={artifactImage}
-                    alt="???? ?? ????"
+                    alt="문화재청 문화유산 탐방"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className={`absolute inset-0 ${
@@ -844,12 +856,12 @@ export function WelcomeScreen({
                   <h4 className={`font-bold text-lg mb-2 ${
                     darkMode ? 'text-white' : 'text-[#1F2937]'
                   } group-hover:text-[#3B82F6] transition-colors`}>
-                    ???? ?? ???? ??
+                    문화재청 문화유산 탐방 🗺️
                   </h4>
                   <p className={`text-sm ${
                     darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
                   }`}>
-                    ?????? ????? ??? ??? ???? ?????!
+                    우리나라의 소중한 문화유산을 온라인으로 직접 탐방해 보세요!
                   </p>
                 </div>
               </motion.button>
@@ -868,7 +880,7 @@ export function WelcomeScreen({
                 <div className="aspect-[4/3] relative overflow-hidden">
                   <ImageWithFallback 
                     src={comicsImage}
-                    alt="?? ?? ??"
+                    alt="한국사 역사 만화"
                     className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                   />
                   <div className={`absolute inset-0 ${
@@ -891,12 +903,12 @@ export function WelcomeScreen({
                   <h4 className={`font-bold text-lg mb-2 ${
                     darkMode ? 'text-white' : 'text-[#1F2937]'
                   } group-hover:text-[#10B981] transition-colors`}>
-                    ?? ?? ?? ??
+                    한국사 역사 만화 영상 🎬
                   </h4>
                   <p className={`text-sm ${
                     darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
                   }`}>
-                    ???? ???? ??? ??? ???? ?????!
+                    재미있는 애니메이션으로 한국사 핵심 내용을 쉽게 이해해요!
                   </p>
                 </div>
               </motion.button>
@@ -916,21 +928,21 @@ export function WelcomeScreen({
           >
             <div className="text-center mb-8">
               <h3 className={`font-bold text-3xl ${darkMode ? 'text-white' : 'text-[#1F2937]'} mb-3`}>
-                ?? ?? ??????! ??
+                이런 것들을 배울 수 있어요! 🌟
               </h3>
               <p className={`text-base ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'}`}>
-                ?????? ????? ???? ??? ??? ??
+                초등학교 교과서 내용을 재미있게 게임으로 학습해요
               </p>
             </div>
 
             <div className="grid gap-4 md:grid-cols-2">
               {[
-                '?? ??? ??? ??? ?? ??',
-                '210?? ?? ?? ?? ?? ???',
-                '500?? ?? ?? ?? ??',
-                '?? ??? ?? ????',
-                '3?? ??? ??? ?? ??',
-                'AI ?? ?? ?? ?? ??'
+                '시대별 역사 흐름과 핵심 사건 이해하기',
+                '210명의 위인 카드를 모으며 인물 학습하기',
+                '500개 이상 퀴즈로 실력 쑥쑥 키우기',
+                'AI 위인과 직접 대화하며 역사 체험하기',
+                '3D 애니메이션으로 생생한 역사 시각화',
+                'AI 굿즈 만들기로 창의력 키우기'
               ].map((item, index) => (
                 <motion.div
                   key={index}
@@ -965,7 +977,7 @@ export function WelcomeScreen({
         }`}>
           <div className="max-w-7xl mx-auto px-6 text-center">
             <p className={`text-sm ${darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'}`}>
-              ? 2025 AI ??? ??. ????? ?? ???? ?? ?? ???
+              © 2025 AI 한국사 여행. 초등학생을 위한 재미있는 역사 학습 플랫폼
             </p>
           </div>
         </footer>

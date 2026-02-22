@@ -1,7 +1,8 @@
 // Supabase Client for Korean History Learning App
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+const _supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ngvsfcekfzzykvcsjktp.supabase.co';
+const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
 
-const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-48be01a5`;
+const API_BASE_URL = `${_supabaseUrl}/functions/v1/make-server-48be01a5`;
 
 // Helper function for API calls
 async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
@@ -9,7 +10,7 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${publicAnonKey}`,
+      'Authorization': `Bearer ${_anonKey}`,
       ...options?.headers,
     },
   });

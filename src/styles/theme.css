@@ -254,8 +254,10 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", "Apple Color Emoji", sans-serif;
+    font-family: "Pretendard Variable", Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", -apple-system, BlinkMacSystemFont, "Apple Color Emoji", sans-serif;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    word-break: keep-all;
+    overflow-wrap: break-word;
   }
 
   /* 📝 Typography System - 초등학생 가독성 최적화 */

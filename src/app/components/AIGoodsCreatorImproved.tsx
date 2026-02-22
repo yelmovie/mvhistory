@@ -35,35 +35,35 @@ export function AIGoodsCreatorImproved({
 
   // Example prompts/tags
   const exampleTags = [
-    { icon: "??", text: "???? ???" },
-    { icon: "??", text: "??? ???" },
-    { icon: "??", text: "???? ??" },
-    { icon: "??", text: "??? ???" },
-    { icon: "??", text: "?? ??" },
-    { icon: "??", text: "?? ???" },
-    { icon: "??", text: "?? ??" },
-    { icon: "?", text: "??? ??" }
+    { icon: "👑", text: "이순신 장군 디자인" },
+    { icon: "🏯", text: "경복궁 일러스트" },
+    { icon: "🎨", text: "한복 입은 세종대왕" },
+    { icon: "⚔️", text: "삼국시대 전사" },
+    { icon: "🌸", text: "조선 꽃무늬" },
+    { icon: "🐉", text: "고려 청자 문양" },
+    { icon: "📜", text: "훈민정음 서체" },
+    { icon: "🗺", text: "한반도 지도" }
   ];
 
   const goodsTypes = [
     { 
       id: 'tshirt' as GoodsType, 
       icon: Shirt, 
-      name: '???',
+      name: '티셔츠',
       color: '#6366F1',
       gradient: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)'
     },
     { 
       id: 'mug' as GoodsType, 
       icon: Coffee, 
-      name: '???',
+      name: '머그컵',
       color: '#F59E0B',
       gradient: 'linear-gradient(135deg, #F59E0B 0%, #EF4444 100%)'
     },
     { 
       id: 'ecobag' as GoodsType, 
       icon: ShoppingBag, 
-      name: '???',
+      name: '에코백',
       color: '#10B981',
       gradient: 'linear-gradient(135deg, #10B981 0%, #059669 100%)'
     }
@@ -275,13 +275,13 @@ export function AIGoodsCreatorImproved({
                 <h1 className={`text-3xl lg:text-4xl font-black ${
                   darkMode ? 'text-white' : 'text-[#1F2937]'
                 }`}>
-                  AI ?? ?? ???
+                  AI 역사 굿즈 만들기
                 </h1>
               </div>
               <p className={`text-base lg:text-lg ${
                 darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
               }`}>
-                AI? ???? ????? ?? ?? ?? ????? ??????! ???
+                AI로 나만의 특별한 역사 굿즈를 만들어 보세요! 🎨
               </p>
             </div>
           </div>
@@ -305,7 +305,7 @@ export function AIGoodsCreatorImproved({
                 darkMode ? 'text-white' : 'text-[#1F2937]'
               }`}>
                 <Star className="w-5 h-5 text-[#F59E0B]" fill="#F59E0B" strokeWidth={2} />
-                ?? ?? ??
+                굿즈 종류 선택
               </h3>
               
               <div className="grid grid-cols-3 gap-3">
@@ -349,13 +349,13 @@ export function AIGoodsCreatorImproved({
                 darkMode ? 'text-white' : 'text-[#1F2937]'
               }`}>
                 <Zap className="w-5 h-5 text-[#EC4899]" strokeWidth={2} />
-                ??? ???? ??
+                디자인 프롬프트 입력
               </h3>
 
               <textarea
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                placeholder="?? ?? ??? ??? ????? ?: ???? ???? ?? ??? ???"
+                placeholder="원하는 굿즈 디자인을 설명해 주세요 예: 이순신 장군이 배 위에서 용감한 모습"
                 className={`w-full h-32 px-4 py-3 rounded-[16px] border-2 text-base resize-none transition-all ${
                   darkMode
                     ? 'bg-[#334155] border-[#475569] text-white placeholder-[#94A3B8] focus:border-[#6366F1]'
@@ -369,7 +369,7 @@ export function AIGoodsCreatorImproved({
                 <p className={`text-sm font-bold mb-3 ${
                   darkMode ? 'text-[#94A3B8]' : 'text-[#6B7280]'
                 }`}>
-                  ?? ?? ???? (???? ??)
+                  예시 태그 클릭하기 (클릭해서 추가)
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {exampleTags.map((tag, index) => (
@@ -418,12 +418,12 @@ export function AIGoodsCreatorImproved({
                     >
                       <Loader2 className="w-6 h-6" strokeWidth={2} />
                     </motion.div>
-                    ?? ?... {generationProgress}%
+                    생성 중... {generationProgress}%
                   </>
                 ) : (
                   <>
                     <Wand2 className="w-6 h-6" strokeWidth={2} />
-                    AI? ?? ???
+                    AI로 굿즈 만들기
                   </>
                 )}
               </motion.button>
@@ -445,7 +445,7 @@ export function AIGoodsCreatorImproved({
                 darkMode ? 'text-white' : 'text-[#1F2937]'
               }`}>
                 <ImageIcon className="w-5 h-5 text-[#10B981]" strokeWidth={2} />
-                ??? ????
+                미리보기 화면
               </h3>
 
               {/* Preview Area */}
@@ -505,12 +505,12 @@ export function AIGoodsCreatorImproved({
                       <p className={`text-lg font-bold mb-2 ${
                         darkMode ? 'text-white' : 'text-[#1F2937]'
                       }`}>
-                        AI? ??? ??? ???...
+                        AI가 멋진 굿즈를 만드는 중...
                       </p>
                       <p className={`text-sm ${
                         darkMode ? 'text-[#94A3B8]' : 'text-[#6B7280]'
                       }`}>
-                        {generationProgress}% ??
+                        {generationProgress}% 완료
                       </p>
 
                       {/* Progress Bar */}
@@ -585,12 +585,12 @@ export function AIGoodsCreatorImproved({
                       <p className={`text-base font-medium ${
                         darkMode ? 'text-[#94A3B8]' : 'text-[#6B7280]'
                       }`}>
-                        ????? ????
+                        디자인을 입력하면
                       </p>
                       <p className={`text-base font-medium ${
                         darkMode ? 'text-[#94A3B8]' : 'text-[#6B7280]'
                       }`}>
-                        AI? ??? ??? ?????!
+                        AI가 굿즈를 만들어드려요!
                       </p>
                     </motion.div>
                   )}
@@ -612,7 +612,7 @@ export function AIGoodsCreatorImproved({
                     darkMode ? 'text-[#6EE7B7]' : 'text-[#065F46]'
                   }`}>
                     <Sparkles className="w-4 h-4 flex-shrink-0 mt-0.5" strokeWidth={2} />
-                    ?? ??! ???? ??????? ?? ???? ??????.
+                    완성됐어요! 오른쪽 하단 버튼으로 굿즈 이미지를 저장해보세요.
                   </p>
                 </motion.div>
               )}
@@ -639,13 +639,13 @@ export function AIGoodsCreatorImproved({
               <h4 className={`text-sm font-bold mb-1 ${
                 darkMode ? 'text-[#A5B4FC]' : 'text-[#6366F1]'
               }`}>
-                ?? AI ?? ??? ?
+                💡 AI 굿즈 만들기 팁
               </h4>
               <p className={`text-xs ${
                 darkMode ? 'text-[#CBD5E1]' : 'text-[#6B7280]'
               }`}>
-                ???? ????? ? ?? ??? ?? ? ???! ??, ???, ?? ?? ??? ?????.
-                ?: "??? ?? ??? ???? ???? ????? ?? ?? ????"
+                구체적인 설명일수록 더 좋은 결과물이 나와요! 인물, 시대상, 색상 등을 자세히 써보세요.
+                예: "이순신 장군이 거북선 위에서 파란 하늘을 배경으로 당당히 서 있는 모습"
               </p>
             </div>
           </div>
