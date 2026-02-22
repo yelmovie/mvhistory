@@ -374,23 +374,42 @@ export default function App() {
   };
 
   const handleLogin = async (userName: string) => {
-    const users = JSON.parse(localStorage.getItem("users") || "{}");
-    const userEmail = Object.keys(users).find(email => users[email].name === userName);
-    if (userEmail) {
-      const user = { name: userName, email: userEmail };
-      setCurrentUser(user);
-      
-      // Initialize or update Supabase profile
-      try {
-        const profile = await initializeUserSession(userName, userEmail);
-        setUserProfile(profile);
-      } catch (error) {
-        console.error("Failed to sync user profile:", error);
-      }
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:handleLogin',message:'login called',data:{userName},timestamp:Date.now(),hypothesisId:'A',runId:'login-1'})}).catch(()=>{});
+    // #endregion
 
-      // 로그인 모달이 학습 시작 버튼에 의해 열렸다면 바로 시작
-      setPendingStart(true);
-    }
+    // LoginModal stores { name, email } in localStorage before calling onLogin
+    const storedUser = (() => {
+      try { return JSON.parse(localStorage.getItem("currentUser") || "null"); } catch { return null; }
+    })();
+
+    const users = JSON.parse(localStorage.getItem("users") || "{}");
+    const userEmail =
+      storedUser?.email ??
+      Object.keys(users).find(email => users[email].name === userName) ??
+      Object.keys(users).find(email => email.split("@")[0] === userName) ??
+      "";
+
+    // #region agent log
+    fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:handleLogin',message:'resolved email',data:{userName,userEmail,storedUser},timestamp:Date.now(),hypothesisId:'B',runId:'login-1'})}).catch(()=>{});
+    // #endregion
+
+    const user = { name: userName, email: userEmail };
+    setCurrentUser(user);
+    setPendingStart(true); // 즉시 설정 — Supabase 동기화 기다리지 않음
+
+    // Initialize or update Supabase profile (best-effort, non-blocking)
+    initializeUserSession(userName, userEmail || undefined).then(profile => {
+      setUserProfile(profile);
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:handleLogin',message:'supabase profile synced',data:{profile},timestamp:Date.now(),hypothesisId:'C',runId:'login-1'})}).catch(()=>{});
+      // #endregion
+    }).catch(error => {
+      // #region agent log
+      fetch('http://127.0.0.1:7244/ingest/318aca58-286a-4080-bc4f-6cd5c6cea3e0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'App.tsx:handleLogin',message:'supabase sync failed',data:{error:String(error)},timestamp:Date.now(),hypothesisId:'D',runId:'login-1'})}).catch(()=>{});
+      // #endregion
+      console.error("Failed to sync user profile:", error);
+    });
   };
 
   const handleLogout = () => {
