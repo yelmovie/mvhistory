@@ -5,14 +5,12 @@ import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 import * as kv from "./kv_store.tsx";
 import {
   uploadImageToStorage,
-  fetchImageBytes,
   detectContentType,
   extensionForContentType,
 } from "./storage_helper.tsx";
 import {
   buildCacheKey,
   buildQuizImagePrompt,
-  isImageRelevant,
 } from "./prompt_builder.tsx";
 import { checkRateLimit, retryAfterSeconds, pruneExpiredEntries } from "./rate_limiter.tsx";
 
@@ -909,60 +907,44 @@ async function resolveAndStoreImage(
 ): Promise<string> {
   const db = dbClient();
   let imageBytes: Uint8Array | null = null;
-  let source = "ai";
 
-  // --- 1. Try Google Custom Search first (free quota) ---
-  const googleQuery = `${keywords.slice(0, 2).join(" ")} ${era} 한국 역사`;
-  const googleUrl = await searchGoogleImage(googleQuery);
-
-  if (googleUrl && isImageRelevant(googleUrl)) {
+  // --- OpenAI gpt-image-1-mini (low, $0.005/image) with retries ---
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      await sleep(500 * Math.pow(2, attempt - 1)); // 500ms, 1000ms
+    }
     try {
-      imageBytes = await fetchImageBytes(googleUrl);
-      source = "google";
-    } catch (e) {
-      console.warn("Google image fetch failed, falling back to AI:", e);
+      imageBytes = await generateOpenAIImage(prompt);
+      break;
+    } catch (err) {
+      lastErr = err;
+      console.error(`OpenAI attempt ${attempt + 1} failed:`, err);
     }
   }
 
-  // --- 2. OpenAI fallback with retries ---
   if (!imageBytes) {
-    let lastErr: unknown;
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-      if (attempt > 0) {
-        await sleep(500 * Math.pow(2, attempt - 1)); // 500ms, 1000ms, …
-      }
-      try {
-        imageBytes = await generateOpenAIImage(prompt);
-        source = "ai";
-        break;
-      } catch (err) {
-        lastErr = err;
-        console.error(`OpenAI attempt ${attempt + 1} failed:`, err);
-      }
-    }
-    if (!imageBytes) {
-      // All retries exhausted — mark failed and return placeholder
-      await db.from("quiz_images").upsert(
-        {
-          cache_key: cacheKey,
-          quiz_item_id: quizItemId ?? null,
-          prompt,
-          model: "gpt-image-1-mini",
-          quality: "low",
-          size: "1024x1024",
-          storage_bucket: STORAGE_BUCKET,
-          storage_path: `${cacheKey}/v1.png`,
-          public_url: PLACEHOLDER_IMAGE_URL,
-          status: "failed",
-          error: String(lastErr),
-        },
-        { onConflict: "cache_key" },
-      );
-      return PLACEHOLDER_IMAGE_URL;
-    }
+    // All retries exhausted — mark failed and return placeholder
+    await db.from("quiz_images").upsert(
+      {
+        cache_key: cacheKey,
+        quiz_item_id: quizItemId ?? null,
+        prompt,
+        model: "gpt-image-1-mini",
+        quality: "low",
+        size: "1024x1024",
+        storage_bucket: STORAGE_BUCKET,
+        storage_path: `${cacheKey}/v1.png`,
+        public_url: PLACEHOLDER_IMAGE_URL,
+        status: "failed",
+        error: String(lastErr),
+      },
+      { onConflict: "cache_key" },
+    );
+    return PLACEHOLDER_IMAGE_URL;
   }
 
-  // --- 3. Upload to Supabase Storage ---
+  // --- Upload to Supabase Storage ---
   const contentType = detectContentType(imageBytes);
   const ext = extensionForContentType(contentType);
   const storagePath = `${cacheKey}/v1.${ext}`;
@@ -974,14 +956,14 @@ async function resolveAndStoreImage(
     contentType,
   );
 
-  // --- 4. Persist to DB ---
+  // --- Persist to DB ---
   await db.from("quiz_images").upsert(
     {
       cache_key: cacheKey,
       quiz_item_id: quizItemId ?? null,
       prompt,
-      model: source === "ai" ? "gpt-image-1-mini" : "google-search",
-      quality: source === "ai" ? "low" : "external",
+      model: "gpt-image-1-mini",
+      quality: "low",
       size: "1024x1024",
       storage_bucket: STORAGE_BUCKET,
       storage_path: storagePath,
