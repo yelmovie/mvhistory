@@ -14,6 +14,26 @@ export interface ChatResponse {
   usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number };
 }
 
+// ── 세션 토큰 사용량 트래커 (과금 방지) ──────────────────────
+// 앱 실행 중 누적 토큰 수를 메모리에 추적
+// gpt-4o-mini 기준: 입력 $0.15/1M, 출력 $0.60/1M 토큰
+const SESSION_TRACKER = {
+  totalTokens: 0,
+  callCount: 0,
+  /** 세션당 최대 토큰 (약 $0.05 이내 — gpt-4o-mini 기준) */
+  MAX_SESSION_TOKENS: 100_000,
+};
+
+/** 현재 세션 토큰 사용량 조회 */
+export function getSessionUsage() {
+  return {
+    totalTokens: SESSION_TRACKER.totalTokens,
+    callCount: SESSION_TRACKER.callCount,
+    estimatedCostKRW: Math.round((SESSION_TRACKER.totalTokens / 1_000_000) * 0.60 * 1400),
+    isOverLimit: SESSION_TRACKER.totalTokens >= SESSION_TRACKER.MAX_SESSION_TOKENS,
+  };
+}
+
 // ── API 키 해석 ──────────────────────────────────────────────
 // 우선순위: 환경변수(VITE_OPENAI_API_KEY) → localStorage(openai_api_key)
 export function getOpenAIApiKey(): string {
@@ -30,6 +50,11 @@ export async function chatWithOpenAI(
 ): Promise<string> {
   const key = apiKey || getOpenAIApiKey();
   if (!key) throw new Error('OpenAI API 키가 설정되지 않았습니다. 설정에서 API 키를 입력해주세요.');
+
+  // 세션 토큰 한도 초과 시 차단
+  if (SESSION_TRACKER.totalTokens >= SESSION_TRACKER.MAX_SESSION_TOKENS) {
+    throw new Error('SESSION_LIMIT');
+  }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -50,6 +75,13 @@ export async function chatWithOpenAI(
 
   const data: ChatResponse = await response.json();
   if (!data.choices?.length) throw new Error('응답이 없습니다.');
+
+  // 토큰 사용량 누적 기록
+  if (data.usage) {
+    SESSION_TRACKER.totalTokens += data.usage.total_tokens;
+    SESSION_TRACKER.callCount += 1;
+  }
+
   return data.choices[0].message.content;
 }
 

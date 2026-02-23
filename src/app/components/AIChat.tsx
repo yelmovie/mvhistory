@@ -1,10 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { Send, ArrowLeft, Loader2, AlertCircle } from "lucide-react";
+import { Send, ArrowLeft, Loader2, AlertCircle, MessageCircle } from "lucide-react";
 import type { Character } from "../data/quizData";
 import { sendChatMessage, trimChatHistory } from "../utils/openaiApi";
 import { getCachedImage } from "../utils/aiImageGenerator";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
+
+/** AIChat 컴포넌트의 세션당 최대 턴 수 (과금 폭탄 방지) */
+const AI_CHAT_MAX_TURNS = 20;
 
 interface Message {
   role: 'user' | 'assistant';
@@ -31,6 +34,10 @@ export function AIChat({
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 과금 방지: 세션당 사용자 전송 횟수 추적
+  const [userTurnCount, setUserTurnCount] = useState(0);
+  const isChatEnded = userTurnCount >= AI_CHAT_MAX_TURNS;
+  const turnsLeft = AI_CHAT_MAX_TURNS - userTurnCount;
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const characterImage = getCachedImage(character.id);
 
@@ -43,7 +50,7 @@ export function AIChat({
   }, [messages]);
 
   const handleSend = async () => {
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading || isChatEnded) return;
 
     const userMessage = input.trim();
     setInput("");
@@ -52,6 +59,8 @@ export function AIChat({
     // 사용자 메시지 추가
     const newUserMessage: Message = { role: 'user', content: userMessage };
     setMessages(prev => [...prev, newUserMessage]);
+    const nextTurn = userTurnCount + 1;
+    setUserTurnCount(nextTurn);
 
     setIsLoading(true);
 
@@ -77,16 +86,26 @@ export function AIChat({
       // AI 응답 추가
       const assistantMessage: Message = {
         role: 'assistant',
-        content: response
+        content: nextTurn >= AI_CHAT_MAX_TURNS
+          ? response + `\n\n(오늘의 대화 횟수(${AI_CHAT_MAX_TURNS}턴)를 모두 사용했습니다. 내일 다시 대화해보세요! 📚)`
+          : response,
       };
       setMessages(prev => [...prev, assistantMessage]);
     } catch (err) {
-      console.error('Chat error:', err);
-      setError(err instanceof Error ? err.message : '응답을 받지 못했습니다. 다시 시도해주세요.');
-      
-      // 에러 시 사용자 메시지 제거
-      setMessages(prev => prev.slice(0, -1));
-      setInput(userMessage); // 입력 복원
+      const errMsg = err instanceof Error ? err.message : '';
+      if (errMsg === 'SESSION_LIMIT') {
+        // 세션 한도 초과: 카운트를 최대로 올려 입력창 비활성화
+        setUserTurnCount(AI_CHAT_MAX_TURNS);
+        setMessages(prev => [
+          ...prev,
+          { role: 'assistant', content: '⚠️ 오늘 AI 대화 한도에 도달했어요. 내일 다시 만나요! 📚' },
+        ]);
+      } else {
+        setError(errMsg || '응답을 받지 못했습니다. 다시 시도해주세요.');
+        setMessages(prev => prev.slice(0, -1));
+        setUserTurnCount(prev => prev - 1);
+        setInput(userMessage);
+      }
     } finally {
       setIsLoading(false);
     }
@@ -150,6 +169,22 @@ export function AIChat({
                   {character.period} • {character.role}
                 </p>
               </div>
+            </div>
+
+            {/* 남은 턴 배지 */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <span className={`flex items-center gap-1 px-3 py-1 rounded-full text-xs font-bold ${
+                isChatEnded
+                  ? darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'
+                  : turnsLeft <= 3
+                  ? 'bg-red-100 text-red-600 animate-pulse'
+                  : turnsLeft <= 7
+                  ? 'bg-amber-100 text-amber-700'
+                  : darkMode ? 'bg-purple-900/40 text-purple-300' : 'bg-purple-100 text-purple-700'
+              }`}>
+                <MessageCircle className="w-3 h-3" />
+                {isChatEnded ? '종료' : `${turnsLeft}턴 남음`}
+              </span>
             </div>
           </div>
         </header>
@@ -274,39 +309,50 @@ export function AIChat({
         <div className={`border-t ${
           darkMode ? 'bg-gray-900/95 border-gray-800' : 'bg-white/95 border-gray-200'
         } backdrop-blur-xl p-4`}>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder={`${character.name}에게 질문해보세요...`}
-              disabled={isLoading}
-              className={`flex-1 px-5 py-3 text-base rounded-xl border-2 ${
-                darkMode 
-                  ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-purple-500' 
-                  : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-purple-500'
-              } outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
-            />
-            <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={handleSend}
-              disabled={!input.trim() || isLoading}
-              className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0"
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
-                <Send className="w-5 h-5" />
-              )}
-            </motion.button>
-          </div>
+          {isChatEnded ? (
+            <div className={`text-center py-3 px-4 rounded-xl ${
+              darkMode ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'
+            }`}>
+              <p className="text-sm font-semibold">🎓 오늘의 대화를 모두 마쳤어요!</p>
+              <p className="text-xs mt-1">내일 다시 {character.name}과(와) 대화해보세요 📚</p>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder={`${character.name}에게 질문해보세요...`}
+                disabled={isLoading || isChatEnded}
+                className={`flex-1 px-5 py-3 text-base rounded-xl border-2 ${
+                  darkMode
+                    ? 'bg-gray-800 border-gray-700 text-white placeholder-gray-500 focus:border-purple-500'
+                    : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-purple-500'
+                } outline-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed`}
+              />
+              <motion.button
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+                onClick={handleSend}
+                disabled={!input.trim() || isLoading || isChatEnded}
+                className="px-6 py-3 rounded-xl bg-gradient-to-r from-purple-600 to-pink-600 text-white shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all flex-shrink-0"
+              >
+                {isLoading ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Send className="w-5 h-5" />
+                )}
+              </motion.button>
+            </div>
+          )}
 
           {/* Helper Text */}
-          <p className={`text-center mt-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
-            역사적 사실에 기반한 교육적인 대화를 나눠보세요 📚
-          </p>
+          {!isChatEnded && (
+            <p className={`text-center mt-2 text-xs ${darkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+              역사적 사실에 기반한 교육적인 대화를 나눠보세요 📚 &nbsp;|&nbsp; 오늘 {userTurnCount}/{AI_CHAT_MAX_TURNS}턴 사용
+            </p>
+          )}
         </div>
       </div>
     </div>

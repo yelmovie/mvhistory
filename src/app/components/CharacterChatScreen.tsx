@@ -21,6 +21,8 @@ const _SERVER_BASE = `${_SUPABASE_URL}/functions/v1/make-server-48be01a5`;
 const SERVER_ENABLED = false;
 const SERVER_BASE = SERVER_ENABLED ? _SERVER_BASE : null;
 const MAX_TURNS = 10;
+/** 한 인물과 재시작할 수 있는 최대 횟수 (과금 방지) */
+const MAX_RESTARTS = 2;
 
 
 // ── 욕설·비방·원색 필터 ────────────────────────────────────────
@@ -320,6 +322,8 @@ export function CharacterChatScreen({
   const [showUnlockNotification, setShowUnlockNotification] = useState(false);
   const [badWordWarning, setBadWordWarning] = useState(false);
   const [isChatEnded, setIsChatEnded] = useState(false);
+  // 과금 방지: 인물별 재시작 횟수 추적 (Map: characterId → restartCount)
+  const [restartCounts, setRestartCounts] = useState<Map<string, number>>(new Map());
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPeriod, setSelectedPeriod] = useState<string>("전체");
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
@@ -595,6 +599,9 @@ export function CharacterChatScreen({
         fallbackText = "API 키가 올바르지 않아요. ⚙️ 버튼에서 키를 다시 확인해주세요. 🔑";
       } else if (errStr === "RATE_LIMIT") {
         fallbackText = "잠시 사용 한도를 초과했어요. 조금 뒤에 다시 시도해주세요! ⏱️";
+      } else if (errStr === "SESSION_LIMIT") {
+        fallbackText = "⚠️ 오늘 사용한 AI 대화량이 많아 잠시 쉬어가요. 내일 다시 만나요! 📚";
+        setIsChatEnded(true);
       }
       setMessages(prev => [
         ...prev,
@@ -615,6 +622,29 @@ export function CharacterChatScreen({
 
   const handleRestartChat = () => {
     if (!selectedCharacter) return;
+
+    // 과금 방지: 인물별 재시작 횟수 제한
+    const charId = selectedCharacter.id;
+    const currentRestarts = restartCounts.get(charId) ?? 0;
+    if (currentRestarts >= MAX_RESTARTS) {
+      // 이미 최대 재시작 횟수 초과 → 재시작 차단, 안내만 표시
+      setMessages(prev => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          text: `⚠️ ${selectedCharacter.name}과(와)의 대화는 오늘 최대 ${MAX_RESTARTS}회 재시작할 수 있어요. 내일 다시 만나요! 📚`,
+          sender: "character",
+          timestamp: new Date(),
+        },
+      ]);
+      return;
+    }
+
+    setRestartCounts(prev => {
+      const next = new Map(prev);
+      next.set(charId, currentRestarts + 1);
+      return next;
+    });
     setMessages([
       {
         id: Date.now().toString(),
