@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   Lightbulb, Send, ArrowLeft,
   CheckCircle, XCircle, AlertCircle,
-  Home, Check, X, ArrowRight, Loader2
+  Home, Check, X, ArrowRight, Loader2, SkipForward
 } from "lucide-react";
 import confetti from "canvas-confetti";
 import { checkSpellingSimilarity } from "../data/quizData";
@@ -11,10 +11,6 @@ import { PointsBadge } from "./gamification/PointsBadge";
 import { LevelIndicator } from "./gamification/LevelIndicator";
 import { ExpBar } from "./gamification/ExpBar";
 import { RewardAnimation } from "./gamification/RewardAnimation";
-import { generateQuizHint } from "../utils/openaiApi";
-
-const _supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ngvsfcekfzzykvcsjktp.supabase.co';
-const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
 
 interface QuizScreenProps {
   question: {
@@ -63,9 +59,10 @@ export function QuizScreen({
   const [spellingHint, setSpellingHint] = useState("");
   const [selectedOption, setSelectedOption] = useState<string>("");
 
-  // AI 힌트
+  // 힌트
   const [generatedHints, setGeneratedHints] = useState<string[]>([]);
   const [hintLoading, setHintLoading] = useState(false);
+  const [showSkipConfirm, setShowSkipConfirm] = useState(false);
 
   // 게임화 상태
   const [points, setPoints] = useState(2850);
@@ -88,28 +85,49 @@ export function QuizScreen({
     return '한국사';
   };
 
+  // 단계별 힌트 생성: 1단계=조개식 힌트, 2단계=첫 글자 공개, 3단계=정답 직접 공개
+  const buildStepHint = (step: number): string => {
+    const ans = question.answer;
+    const len = ans.length;
+    if (step === 1) {
+      // 기존 데이터의 힌트 활용
+      return question.hints?.[0] ?? `이 문제의 정답은 ${len}글자예요. 천천히 생각해보세요!`;
+    }
+    if (step === 2) {
+      // 두 번째 힌트 or 첫 글자 공개
+      const baseHint = question.hints?.[1] ?? '';
+      const firstChar = ans[0];
+      const masked = firstChar + '■'.repeat(len - 1);
+      return baseHint
+        ? `${baseHint} (정답의 첫 글자는 "${firstChar}"이에요: ${masked})`
+        : `정답의 첫 글자는 "${firstChar}"이에요: ${masked}`;
+    }
+    // step === 3: 정답 직접 공개
+    return `정답은 바로 "${ans}"입니다! 이번엔 정답을 입력해 맞춰보세요.`;
+  };
+
   const handleShowHint = async () => {
     if (currentHint >= 3) return;
+    const nextStep = currentHint + 1;
     setHintLoading(true);
     try {
+      // 3단계는 항상 정답 직접 공개
+      if (nextStep === 3) {
+        setGeneratedHints(prev => [...prev, buildStepHint(3)]);
+        setCurrentHint(3);
+        setShowHints(true);
+        return;
+      }
+      // 1, 2단계는 AI 힌트 시도 후 fallback
+      const { generateQuizHint } = await import("../utils/openaiApi");
       const category = question.category || extractCategoryFromQuestion(question.question);
-      const newHint = await generateQuizHint(
-        question.question,
-        question.answer,
-        currentHint + 1,
-        category
-      );
-      setGeneratedHints(prev => [...prev, newHint]);
-      setCurrentHint(currentHint + 1);
+      const aiHint = await generateQuizHint(question.question, question.answer, nextStep, category);
+      setGeneratedHints(prev => [...prev, aiHint]);
+      setCurrentHint(nextStep);
       setShowHints(true);
     } catch {
-      const fallbackHints = [
-        `이 문제는 한국사와 관련이 있어요. 천천히 생각해보세요!`,
-        `답은 "${question.answer.length}글자"입니다. 조금만 더 생각해보세요!`,
-        `정답은 "${question.answer[0]}"로 시작하는 ${question.answer.length}글자 단어예요!`
-      ];
-      setGeneratedHints(prev => [...prev, fallbackHints[currentHint]]);
-      setCurrentHint(currentHint + 1);
+      setGeneratedHints(prev => [...prev, buildStepHint(nextStep)]);
+      setCurrentHint(nextStep);
       setShowHints(true);
     } finally {
       setHintLoading(false);
@@ -162,31 +180,7 @@ export function QuizScreen({
     }
   };
 
-  const handleNext = async () => {
-    if (isCorrect) {
-      try {
-        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-        const userId = currentUser.email || 'guest';
-        await fetch(
-          `${_supabaseUrl}/functions/v1/make-server-48be01a5/quiz/completed`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${_anonKey}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              userId,
-              questionId: question.id,
-              period: (question as { period?: string }).period || 'unknown'
-            })
-          }
-        );
-      } catch {
-        // 오류 무시
-      }
-    }
-
+  const handleNext = () => {
     onSubmitAnswer(submittedAnswer, currentHint);
     setShowResult(false);
     setIsCorrect(false);
@@ -198,6 +192,22 @@ export function QuizScreen({
     setGeneratedHints([]);
     setSpellingError(false);
     setSpellingHint("");
+    setShowSkipConfirm(false);
+  };
+
+  const handleSkip = () => {
+    onSkip();
+    setShowResult(false);
+    setIsCorrect(false);
+    setSubmittedAnswer("");
+    setUserAnswer("");
+    setSelectedOption("");
+    setCurrentHint(0);
+    setShowHints(false);
+    setGeneratedHints([]);
+    setSpellingError(false);
+    setSpellingHint("");
+    setShowSkipConfirm(false);
   };
 
   const handleOptionSelect = (option: string) => {
@@ -351,8 +361,9 @@ export function QuizScreen({
         </motion.div>
 
         {/* 문제 카드 */}
+        <AnimatePresence mode="wait">
         <motion.div
-          key={question.id}
+          key={`question-${question.id}-${currentQuestion}`}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           className={`rounded-3xl overflow-hidden bg-gradient-to-br ${cardGradient}`}
@@ -596,29 +607,80 @@ export function QuizScreen({
             {/* ── 액션 버튼 ── */}
             <div className="flex gap-3">
               {!showResult ? (
-                <motion.button
-                  whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                  onClick={handleSubmit}
-                  disabled={question.type === 'multiple-choice' ? !selectedOption : !userAnswer.trim()}
-                  className={`flex-1 px-6 py-4 rounded-2xl font-bold text-white transition-all flex items-center justify-center gap-2 ${
-                    (question.type === 'multiple-choice' ? !selectedOption : !userAnswer.trim())
-                      ? darkMode
-                        ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                        : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                      : ''
-                  }`}
-                  style={
-                    (question.type === 'multiple-choice' ? selectedOption : userAnswer.trim())
-                      ? {
-                          background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
-                          boxShadow: '0 8px 24px -8px rgba(99,102,241,0.6)'
-                        }
-                      : {}
-                  }
-                >
-                  <Send className="w-5 h-5" strokeWidth={2} />
-                  제출하기
-                </motion.button>
+                <>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                    onClick={handleSubmit}
+                    disabled={question.type === 'multiple-choice' ? !selectedOption : !userAnswer.trim()}
+                    className={`flex-1 px-6 py-4 rounded-2xl font-bold text-white transition-all flex items-center justify-center gap-2 ${
+                      (question.type === 'multiple-choice' ? !selectedOption : !userAnswer.trim())
+                        ? darkMode
+                          ? 'bg-gray-800 text-gray-600 cursor-not-allowed'
+                          : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                        : ''
+                    }`}
+                    style={
+                      (question.type === 'multiple-choice' ? selectedOption : userAnswer.trim())
+                        ? {
+                            background: 'linear-gradient(135deg, #6366F1 0%, #8B5CF6 100%)',
+                            boxShadow: '0 8px 24px -8px rgba(99,102,241,0.6)'
+                          }
+                        : {}
+                    }
+                  >
+                    <Send className="w-5 h-5" strokeWidth={2} />
+                    제출하기
+                  </motion.button>
+
+                  {/* 패스 버튼 */}
+                  <AnimatePresence>
+                    {showSkipConfirm ? (
+                      <motion.div
+                        key="skip-confirm"
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        exit={{ opacity: 0, scale: 0.9 }}
+                        className="flex gap-2 items-center"
+                      >
+                        <span className={`text-xs font-bold ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                          건너뛸까요?
+                        </span>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                          onClick={handleSkip}
+                          className="px-3 py-2 rounded-xl font-bold text-white text-sm"
+                          style={{ background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)' }}
+                        >
+                          예
+                        </motion.button>
+                        <motion.button
+                          whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                          onClick={() => setShowSkipConfirm(false)}
+                          className={`px-3 py-2 rounded-xl font-bold text-sm ${
+                            darkMode ? 'bg-gray-700 text-gray-200' : 'bg-gray-200 text-gray-700'
+                          }`}
+                        >
+                          아니오
+                        </motion.button>
+                      </motion.div>
+                    ) : (
+                      <motion.button
+                        key="skip-btn"
+                        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                        onClick={() => setShowSkipConfirm(true)}
+                        title="이 문제 건너뛰기"
+                        className={`px-4 py-4 rounded-2xl font-bold flex items-center gap-1.5 text-sm transition-all ${
+                          darkMode
+                            ? 'bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-yellow-400'
+                            : 'bg-gray-100 hover:bg-yellow-50 text-gray-500 hover:text-yellow-600'
+                        }`}
+                      >
+                        <SkipForward className="w-4 h-4" strokeWidth={2} />
+                        패스
+                      </motion.button>
+                    )}
+                  </AnimatePresence>
+                </>
               ) : (
                 <motion.button
                   whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
@@ -636,6 +698,7 @@ export function QuizScreen({
             </div>
           </div>
         </motion.div>
+        </AnimatePresence>
       </div>
     </div>
   );

@@ -306,7 +306,7 @@ export default function App() {
       );
     }
     
-    // Save quiz result to Supabase
+    // 서버 동기화 (실패해도 로컬 학습 기록에 영향 없음)
     const userId = getCurrentUserId();
     if (userId) {
       try {
@@ -318,14 +318,12 @@ export default function App() {
           hintsUsed,
           earnedPoints: points
         });
-        
-        // Update local profile
         if (userProfile) {
           const updatedProfile = await getUserProfile(userId);
           setUserProfile(updatedProfile);
         }
-      } catch (error) {
-        console.error("Failed to save quiz result:", error);
+      } catch {
+        // 서버 미배포 환경에서는 로컬 studyRecord로만 동작
       }
     }
     
