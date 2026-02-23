@@ -85,25 +85,29 @@ export function QuizScreen({
     return '한국사';
   };
 
-  // 단계별 힌트 생성: 1단계=조개식 힌트, 2단계=첫 글자 공개, 3단계=정답 직접 공개
+  // 단계별 힌트 생성: 1단계=개념 조개, 2단계=첫 글자+글자수, 3단계=세 번째 힌트(정답 미공개)
   const buildStepHint = (step: number): string => {
     const ans = question.answer;
     const len = ans.length;
     if (step === 1) {
-      // 기존 데이터의 힌트 활용
       return question.hints?.[0] ?? `이 문제의 정답은 ${len}글자예요. 천천히 생각해보세요!`;
     }
     if (step === 2) {
-      // 두 번째 힌트 or 첫 글자 공개
       const baseHint = question.hints?.[1] ?? '';
       const firstChar = ans[0];
-      const masked = firstChar + '■'.repeat(len - 1);
+      const masked = firstChar + '■'.repeat(Math.max(len - 1, 0));
       return baseHint
-        ? `${baseHint} (정답의 첫 글자는 "${firstChar}"이에요: ${masked})`
-        : `정답의 첫 글자는 "${firstChar}"이에요: ${masked}`;
+        ? `${baseHint} (첫 글자는 "${firstChar}", 총 ${len}글자예요: ${masked})`
+        : `첫 글자는 "${firstChar}", 총 ${len}글자예요: ${masked}`;
     }
-    // step === 3: 정답 직접 공개
-    return `정답은 바로 "${ans}"입니다! 이번엔 정답을 입력해 맞춰보세요.`;
+    // step === 3: 세 번째 힌트 (정답 미공개, 최대한 쉬운 설명)
+    const thirdHint = question.hints?.[2] ?? '';
+    const firstChar = ans[0];
+    const lastChar = ans[len - 1];
+    if (thirdHint) {
+      return `마지막 힌트! ${thirdHint}`;
+    }
+    return `마지막 힌트! 정답은 "${firstChar}"로 시작해서 "${lastChar}"로 끝나는 ${len}글자 단어예요.`;
   };
 
   const handleShowHint = async () => {
@@ -111,14 +115,7 @@ export function QuizScreen({
     const nextStep = currentHint + 1;
     setHintLoading(true);
     try {
-      // 3단계는 항상 정답 직접 공개
-      if (nextStep === 3) {
-        setGeneratedHints(prev => [...prev, buildStepHint(3)]);
-        setCurrentHint(3);
-        setShowHints(true);
-        return;
-      }
-      // 1, 2단계는 AI 힌트 시도 후 fallback
+      // 모든 단계에서 AI 힌트 시도 후 fallback (정답을 포함하지 않는 힌트 요청)
       const { generateQuizHint } = await import("../utils/openaiApi");
       const category = question.category || extractCategoryFromQuestion(question.question);
       const aiHint = await generateQuizHint(question.question, question.answer, nextStep, category);

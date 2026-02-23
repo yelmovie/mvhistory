@@ -115,24 +115,46 @@ export function trimChatHistory(history: ChatMessage[], maxLength: number = 10):
 export async function generateQuizHint(
   question: string,
   answer: string,
-  hintIndex: number
+  hintIndex: number,
+  _category?: string
 ): Promise<string> {
+  const len = answer.length;
+  const first = answer[0];
+  const last = answer[len - 1];
+
+  // fallback 힌트 — 정답을 절대 직접 노출하지 않음
   const builtInHints = [
-    `힌트 1: 답의 첫 글자는 "${answer[0]}"입니다.`,
-    `힌트 2: 답은 총 ${answer.length}글자입니다.`,
-    `힌트 3: 정답은 "${answer}"입니다.`,
+    `이 문제는 한국사와 관련이 있어요. 정답은 ${len}글자예요. 천천히 생각해보세요!`,
+    `정답의 첫 글자는 "${first}"이에요. 총 ${len}글자: ${first}${'■'.repeat(Math.max(len - 1, 0))}`,
+    `마지막 힌트! "${first}"로 시작하고 "${last}"로 끝나는 ${len}글자 단어예요.`,
   ];
 
   const apiKey = getOpenAIApiKey();
-  if (!apiKey) return builtInHints[Math.min(hintIndex, builtInHints.length - 1)];
+  if (!apiKey) return builtInHints[Math.min(hintIndex - 1, builtInHints.length - 1)];
 
   try {
+    const stepDesc = hintIndex === 1
+      ? '개념을 쉽게 설명하는 첫 번째'
+      : hintIndex === 2
+        ? '범위를 좁혀주는 두 번째'
+        : '거의 답을 맞출 수 있도록 도와주는 세 번째';
+
     return await chatWithOpenAI([
-      { role: 'system', content: '초등학생에게 한국사 퀴즈 힌트를 주는 선생님입니다. 정답을 직접 말하지 않고 2문장 이내로 힌트를 주세요.' },
-      { role: 'user', content: `문제: "${question}"\n정답: "${answer}"\n${hintIndex + 1}번째 힌트를 주세요.` },
+      {
+        role: 'system',
+        content: `초등학생에게 한국사 퀴즈 힌트를 주는 선생님입니다.
+규칙:
+1. 정답("${answer}")을 절대 직접 말하지 마세요.
+2. 2문장 이내로 간결하게 힌트를 주세요.
+3. 쉬운 말로 초등학생이 이해할 수 있게 써주세요.`
+      },
+      {
+        role: 'user',
+        content: `문제: "${question}"\n정답: "${answer}"\n${stepDesc} 힌트를 주세요. (정답을 직접 말하면 안 됩니다)`
+      },
     ]);
   } catch {
-    return builtInHints[Math.min(hintIndex, builtInHints.length - 1)];
+    return builtInHints[Math.min(hintIndex - 1, builtInHints.length - 1)];
   }
 }
 
