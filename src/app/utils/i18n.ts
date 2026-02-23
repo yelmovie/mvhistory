@@ -97,7 +97,7 @@ export const translations = {
     searchPlaceholder: '인물 이름, 시대 검색...',
     chattedBadge: '다시는 만날 수 없어요',
     chatStartGuide: '대화 안내',
-    maxTurns: '최대 10번의 대화',
+    maxTurns: '최대 10턴 대화',
     chatEnded: '대화 완료!',
     restartChat: '다시 대화하기',
     otherCharacter: '다른 인물 선택',

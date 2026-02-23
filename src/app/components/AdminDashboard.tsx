@@ -7,9 +7,11 @@ import {
 } from "lucide-react";
 
 // ── 상수 ──────────────────────────────────────────────────────────
-const SUPABASE_URL =
+const _SUPABASE_URL =
   import.meta.env.VITE_SUPABASE_URL || "https://ngvsfcekfzzykvcsjktp.supabase.co";
-const SERVER_BASE = `${SUPABASE_URL}/functions/v1/make-server-48be01a5`;
+// 서버 배포 전까지 비활성화
+const SERVER_ENABLED = false;
+const SERVER_BASE = SERVER_ENABLED ? `${_SUPABASE_URL}/functions/v1/make-server-48be01a5` : null;
 
 // 개발자 비밀 코드 — 환경변수로 관리하거나 직접 입력
 const ADMIN_SECRET = import.meta.env.VITE_ADMIN_SECRET || "mvhistory-admin-2025";
@@ -106,6 +108,11 @@ export function AdminDashboard({ onBack, onGoToImages }: AdminDashboardProps) {
   const fetchStats = useCallback(async (secret: string) => {
     setAuthState("loading");
     setLoadError("");
+    if (!SERVER_BASE) {
+      setAuthState("error");
+      setLoadError("서버가 아직 배포되지 않았습니다. 로컬 데이터만 사용 가능합니다.");
+      return;
+    }
     try {
       const res = await fetch(`${SERVER_BASE}/admin/completion-stats`, {
         headers: {

@@ -4,7 +4,7 @@ const _anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIs
 
 const API_BASE_URL = `${_supabaseUrl}/functions/v1/make-server-48be01a5`;
 
-// Helper function for API calls
+// Helper function for API calls — 서버 미배포(404/405) 시 조용히 실패
 async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
@@ -17,9 +17,8 @@ async function apiCall<T>(endpoint: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    // 404는 서버 미배포 상황이므로 조용히 처리
-    const error = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    throw new Error(error.error || `API Error: ${response.status}`);
+    // 서버 미배포 상황이므로 콘솔 오류 없이 조용히 throw
+    throw Object.assign(new Error(`API ${response.status}`), { silent: true, status: response.status });
   }
 
   return response.json();

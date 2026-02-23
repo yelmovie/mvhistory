@@ -11,9 +11,11 @@ import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { resolveCharacterImage } from "../utils/characterImageMap";
 
 // ── 상수 ────────────────────────────────────────────────────────
-const SUPABASE_URL =
+const _SUPABASE_URL =
   import.meta.env.VITE_SUPABASE_URL || "https://ngvsfcekfzzykvcsjktp.supabase.co";
-const SERVER_BASE = `${SUPABASE_URL}/functions/v1/make-server-48be01a5`;
+// 서버 배포 전까지 API 호출 비활성화 (콘솔 404 오류 방지)
+const SERVER_ENABLED = false;
+const SERVER_BASE = SERVER_ENABLED ? `${_SUPABASE_URL}/functions/v1/make-server-48be01a5` : null;
 
 const PERIOD_ORDER = ["고조선", "삼국시대", "고려", "조선", "근현대"];
 
@@ -468,22 +470,23 @@ function CompletionModal({
   const handleSend = async () => {
     if (sending || sent) return;
     setSending(true);
-    try {
-      await fetch(`${SERVER_BASE}/feedback/request-more`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userId: userId || "anonymous",
-          message: message.trim() || "더 많은 문제를 원합니다!",
-        }),
-        signal: AbortSignal.timeout(6000),
-      });
-      setSent(true);
-    } catch {
-      setSent(true); // 실패해도 UI는 전송 완료로 표시
-    } finally {
-      setSending(false);
+    if (SERVER_BASE) {
+      try {
+        await fetch(`${SERVER_BASE}/feedback/request-more`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: userId || "anonymous",
+            message: message.trim() || "더 많은 문제를 원합니다!",
+          }),
+          signal: AbortSignal.timeout(6000),
+        });
+      } catch {
+        // 서버 미배포 시 조용히 무시
+      }
     }
+    setSent(true);
+    setSending(false);
   };
 
   // 파티클 색상
@@ -1074,22 +1077,24 @@ export function CharacterCollectionImproved({
     async (char: Character) => {
       if (imageCache[char.id] || loadingImage === char.id) return;
       setLoadingImage(char.id);
-      try {
-        const res = await fetch(`${SERVER_BASE}/search-character-image`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ characterName: char.name, period: char.period }),
-          signal: AbortSignal.timeout(6000),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.imageUrl) {
-            setImageCache(prev => ({ ...prev, [char.id]: data.imageUrl }));
-            return;
+      if (SERVER_BASE) {
+        try {
+          const res = await fetch(`${SERVER_BASE}/search-character-image`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ characterName: char.name, period: char.period }),
+            signal: AbortSignal.timeout(6000),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.success && data.imageUrl) {
+              setImageCache(prev => ({ ...prev, [char.id]: data.imageUrl }));
+              return;
+            }
           }
+        } catch {
+          // ignore
         }
-      } catch {
-        // ignore
       }
       setImageCache(prev => ({ ...prev, [char.id]: getFallback(char.period) }));
     },

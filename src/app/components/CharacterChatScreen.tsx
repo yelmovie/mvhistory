@@ -13,9 +13,13 @@ import { getCharacterImagePath } from "../utils/characterImageMap";
 import { t, type Lang } from "../utils/i18n";
 
 // ── 환경 변수 ──────────────────────────────────────────────────
-const SUPABASE_URL =
+// SERVER_BASE는 현재 미배포 상태이므로 이미지 검색 API 호출을 비활성화
+const _SUPABASE_URL =
   import.meta.env.VITE_SUPABASE_URL || "https://ngvsfcekfzzykvcsjktp.supabase.co";
-const SERVER_BASE = `${SUPABASE_URL}/functions/v1/make-server-48be01a5`;
+const _SERVER_BASE = `${_SUPABASE_URL}/functions/v1/make-server-48be01a5`;
+// 서버 배포 전까지 API 호출 비활성화 (콘솔 404 오류 방지)
+const SERVER_ENABLED = false;
+const SERVER_BASE = SERVER_ENABLED ? _SERVER_BASE : null;
 const MAX_TURNS = 10;
 
 
@@ -185,20 +189,22 @@ function getGoodbyeMessage(char: ChatCharacter): string {
   return `이렇게 헤어지니 아쉽습니다... 우리의 대화가 당신께 작은 도움이 되었으면 합니다. 언제고 다시 만나길 바랍니다.`;
 }
 
-// ── 구글 이미지 검색 (서버 경유) ──────────────────────────────
+// ── 구글 이미지 검색 (서버 경유) — 서버 배포 후 SERVER_ENABLED=true로 전환
 async function fetchCharacterImageFromServer(name: string, period: string): Promise<string> {
-  try {
-    const res = await fetch(`${SERVER_BASE}/search-character-image`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ characterName: name, period }),
-      signal: AbortSignal.timeout(5000),
-    });
-    if (!res.ok) throw new Error("failed");
-    const data = await res.json();
-    if (data.success && data.imageUrl) return data.imageUrl;
-  } catch {
-    // ignore
+  if (SERVER_BASE) {
+    try {
+      const res = await fetch(`${SERVER_BASE}/search-character-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ characterName: name, period }),
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!res.ok) throw new Error("failed");
+      const data = await res.json();
+      if (data.success && data.imageUrl) return data.imageUrl;
+    } catch {
+      // ignore
+    }
   }
   return getPeriodImage(period);
 }
@@ -480,12 +486,14 @@ export function CharacterChatScreen({
 - 역할: ${selectedCharacter.role}
 - 소개: ${selectedCharacter.description}
 
-## 절대 규칙: 영어 단어·외래어 사용 완전 금지
-- formal, informal, concept, system, style, level 등 영어 단어를 절대 쓰지 마세요.
+## 절대 규칙: 반드시 순한국어만 사용
+- 영어 단어를 단 한 글자도 쓰지 마세요. 응답 전체가 반드시 한국어(한자 포함 가능)여야 합니다.
+- 절대 금지 예: prosper, formal, system, level, style, concept, growth, develop, flourish 등 모든 영단어.
 - 영어가 필요한 자리엔 반드시 우리말로 바꾸세요.
-  예) formal → 격식, 예법, 의례 / system → 제도, 체계 / level → 수준, 경지 / style → 방식, 태도
+  예) prosper/flourish → 번성하다, 흥하다 / formal → 격식, 예법 / system → 제도, 체계 / level → 수준, 경지 / develop → 발전하다, 키우다
 - 현대에 없는 개념(시험, 학교 등)은 당시 시대 용어로 표현하세요.
   예) 시험 → 과거(科擧), 학교 → 서당·성균관, 공부 → 수학(修學)·글공부
+- 응답하기 전에 영어 단어가 포함되어 있는지 반드시 확인하고, 있다면 한국어로 바꾼 후 응답하세요.
 
 ## 말투 — 이 시대 이 인물답게
 - ${speechHint}
@@ -897,10 +905,10 @@ export function CharacterChatScreen({
                     </div>
                     <div>
                       <p className={`text-sm font-bold ${dark ? "text-white" : "text-gray-800"}`}>
-                        최대 10번의 대화
+                        최대 10턴 대화
                       </p>
                       <p className={`text-xs leading-relaxed ${dark ? "text-gray-400" : "text-gray-600"}`}>
-                        이 인물과는 총 <span className="font-bold text-orange-500">10번</span>만 대화할 수 있어요.
+                        이 인물과는 총 <span className="font-bold text-orange-500">10턴</span>만 대화할 수 있어요.
                         질문 하나하나가 소중해요!
                       </p>
                     </div>
@@ -1565,14 +1573,14 @@ export function CharacterChatScreen({
                         {lang === 'ko' ? '오늘의 역사 학습 완료!' : "Today's History Learning Complete!"}
                       </p>
                       <p className={`text-xs mt-1 ${dark ? "text-gray-400" : "text-gray-500"}`}>
-                        {selectedCharacter.name}과(와) {MAX_TURNS}번의 대화를 마쳤어요
+                        {selectedCharacter.name}과(와) {MAX_TURNS}턴의 대화를 마쳤어요
                       </p>
                     </div>
 
                     {/* 대화 완료 메시지 */}
                     <div className="flex items-center justify-center gap-2 mb-4">
                       <div className={`text-sm text-center px-4 py-2 rounded-xl ${dark ? "bg-white/10 text-gray-300" : "bg-white/60 text-gray-600"}`}>
-                        {selectedCharacter.name.replace(/^[①-㊿]\s*/, "")}과(와) <span className="font-black text-purple-600">{MAX_TURNS}번</span>의 대화를 나눴어요 ✨
+                        {selectedCharacter.name.replace(/^[①-㊿]\s*/, "")}과(와) <span className="font-black text-purple-600">{MAX_TURNS}턴</span>의 대화를 나눴어요 ✨
                       </div>
                     </div>
 
