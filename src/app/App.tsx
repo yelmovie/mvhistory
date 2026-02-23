@@ -1,4 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+
+// ── 환경변수 상수 (하드코딩 anon key 단일 관리) ──────────────────────
+const _SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL ?? 'https://ngvsfcekfzzykvcsjktp.supabase.co';
+const _SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY ?? 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
 import { AnimatedBackground } from "./components/AnimatedBackground";
 import { WelcomeScreen } from "./components/WelcomeScreen";
 import type { Lang } from "./utils/i18n";
@@ -149,11 +153,9 @@ export default function App() {
 
         // ② 서버에서 추가 동기화 (선택적)
         try {
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ngvsfcekfzzykvcsjktp.supabase.co';
-          const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
           const quizRes = await fetch(
-            `${supabaseUrl}/functions/v1/make-server-48be01a5/quiz/completed/${userId}`,
-            { headers: { 'Authorization': `Bearer ${anonKey}` }, signal: AbortSignal.timeout(5000) }
+            `${_SUPABASE_URL}/functions/v1/make-server-48be01a5/quiz/completed/${userId}`,
+            { headers: { 'Authorization': `Bearer ${_SUPABASE_ANON}` }, signal: AbortSignal.timeout(5000) }
           );
           if (quizRes.ok) {
             const data = await quizRes.json();
@@ -177,13 +179,11 @@ export default function App() {
       try {
         const savedUser = localStorage.getItem("currentUser");
         const userId = savedUser ? JSON.parse(savedUser).email : 'guest';
-        const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://ngvsfcekfzzykvcsjktp.supabase.co';
-        const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5ndnNmY2VrZnp6eWt2Y3Nqa3RwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzA5MDYyMDksImV4cCI6MjA4NjQ4MjIwOX0.49FGaOySPc63Pxf6G-QS5T3LVoAie3XWGJsBY1djSZY';
 
         const cardsRes = await fetch(
-          `${supabaseUrl}/functions/v1/make-server-48be01a5/cards/${userId}`,
+          `${_SUPABASE_URL}/functions/v1/make-server-48be01a5/cards/${userId}`,
           {
-            headers: { 'Authorization': `Bearer ${anonKey}` },
+            headers: { 'Authorization': `Bearer ${_SUPABASE_ANON}` },
             signal: AbortSignal.timeout(5000),
           }
         );
@@ -510,8 +510,8 @@ export default function App() {
     // Initialize or update Supabase profile (best-effort, non-blocking)
     initializeUserSession(userName, userEmail || undefined).then(profile => {
       setUserProfile(profile);
-    }).catch(error => {
-      console.error("Failed to sync user profile:", error);
+    }).catch(() => {
+      // 서버 미배포 시 조용히 무시 (로컬 프로필로 동작)
     });
   };
 

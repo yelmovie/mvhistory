@@ -23,6 +23,22 @@ export default defineConfig({
     },
   },
 
+  build: {
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React 코어 분리
+          'vendor-react': ['react', 'react-dom'],
+          // 애니메이션 라이브러리 분리
+          'vendor-motion': ['motion/react'],
+          // Lucide 아이콘 분리
+          'vendor-icons': ['lucide-react'],
+        },
+      },
+    },
+  },
+
   // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
   assetsInclude: ['**/*.svg', '**/*.csv'],
 })

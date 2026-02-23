@@ -285,8 +285,7 @@ export async function initializeUserSession(name?: string, email?: string): Prom
     
     return profile;
   } catch {
-    // 서버 연결 실패 시 로컬 프로필 반환
-    console.warn('서버 연결 실패 — 로컬 프로필 사용');
+    // 서버 연결 실패 시 로컬 프로필로 조용히 폴백
     return createLocalProfile(userId, name, email);
   }
 }
