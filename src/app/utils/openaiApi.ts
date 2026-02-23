@@ -112,50 +112,68 @@ export function trimChatHistory(history: ChatMessage[], maxLength: number = 10):
 }
 
 // ── 퀴즈 힌트 생성 ────────────────────────────────────────────
+/**
+ * 자이가르닉 효과 기반 단계별 개념 힌트
+ *
+ * 목표: 글자수·첫글자 같은 형태 힌트가 아니라,
+ *       관련 역사 개념을 점진적으로 설명해 학습자가
+ *       스스로 답을 떠올리도록 유도한다.
+ *
+ * 1단계: 넓은 역사적 배경 · 맥락 설명
+ * 2단계: 좁혀진 구체적 연관 개념 설명
+ * 3단계: 거의 답을 유추할 수 있는 핵심 설명
+ *         (정답 단어는 절대 포함하지 않음)
+ */
 export async function generateQuizHint(
   question: string,
   answer: string,
   hintIndex: number,
-  _category?: string
+  category?: string
 ): Promise<string> {
-  const len = answer.length;
-  const first = answer[0];
-  const last = answer[len - 1];
+  const systemPrompt = `당신은 초등·중등 한국사 학습을 돕는 선생님입니다.
+학습 목표: 자이가르닉 효과를 활용해, 학생이 오답을 경험하면서도 관련 개념을 자연스럽게 습득하게 합니다.
 
-  // fallback 힌트 — 정답을 절대 직접 노출하지 않음
-  const builtInHints = [
-    `이 문제는 한국사와 관련이 있어요. 정답은 ${len}글자예요. 천천히 생각해보세요!`,
-    `정답의 첫 글자는 "${first}"이에요. 총 ${len}글자: ${first}${'■'.repeat(Math.max(len - 1, 0))}`,
-    `마지막 힌트! "${first}"로 시작하고 "${last}"로 끝나는 ${len}글자 단어예요.`,
+힌트 작성 규칙 (반드시 준수):
+1. 정답 단어("${answer}")를 절대 그대로 말하지 마세요.
+2. 글자 수, 첫 글자, 마지막 글자 같은 '형태 정보'는 절대 쓰지 마세요.
+3. 대신 정답과 관련된 역사적 개념·사건·인물·배경을 설명하세요.
+4. 초등학생이 이해할 수 있는 쉬운 말로, 2~3문장으로 작성하세요.
+5. 힌트 단계가 높을수록 더 구체적이고 핵심에 가까운 설명을 하세요.`;
+
+  const stepGuide = [
+    `1단계 힌트: 이 문제와 관련된 넓은 역사적 배경이나 시대적 맥락을 설명해주세요. 정답을 직접 가리키지 않고, 관련 개념의 큰 그림을 그려주세요.`,
+    `2단계 힌트: 정답과 더 직접적으로 연관된 구체적인 역사 개념이나 사건을 설명해주세요. 학생이 범위를 좁힐 수 있도록 도와주세요.`,
+    `3단계 힌트: 학생이 정답을 거의 유추할 수 있도록 핵심 특징이나 역할을 설명해주세요. 단, 정답 단어 자체는 절대 쓰지 마세요.`,
   ];
 
   const apiKey = getOpenAIApiKey();
-  if (!apiKey) return builtInHints[Math.min(hintIndex - 1, builtInHints.length - 1)];
 
-  try {
-    const stepDesc = hintIndex === 1
-      ? '개념을 쉽게 설명하는 첫 번째'
-      : hintIndex === 2
-        ? '범위를 좁혀주는 두 번째'
-        : '거의 답을 맞출 수 있도록 도와주는 세 번째';
+  if (apiKey) {
+    try {
+      return await chatWithOpenAI([
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: `문제: "${question}"
+정답: "${answer}"
+카테고리: ${category ?? '한국사'}
 
-    return await chatWithOpenAI([
-      {
-        role: 'system',
-        content: `초등학생에게 한국사 퀴즈 힌트를 주는 선생님입니다.
-규칙:
-1. 정답("${answer}")을 절대 직접 말하지 마세요.
-2. 2문장 이내로 간결하게 힌트를 주세요.
-3. 쉬운 말로 초등학생이 이해할 수 있게 써주세요.`
-      },
-      {
-        role: 'user',
-        content: `문제: "${question}"\n정답: "${answer}"\n${stepDesc} 힌트를 주세요. (정답을 직접 말하면 안 됩니다)`
-      },
-    ]);
-  } catch {
-    return builtInHints[Math.min(hintIndex - 1, builtInHints.length - 1)];
+${stepGuide[Math.min(hintIndex - 1, 2)]}`,
+        },
+      ]);
+    } catch { /* fallback으로 */ }
   }
+
+  // API 키 없거나 실패 시 — quizData의 hints 배열을 활용한 개념 fallback
+  const dataHint = question
+    ? (hintIndex === 1
+        ? `이 문제는 ${category ?? '한국사'} 시간에 배우는 내용이에요. 교과서에서 배운 개념을 떠올려보세요!`
+        : hintIndex === 2
+          ? `문제를 다시 천천히 읽어보세요. 문제 속에 중요한 단서가 숨어 있어요. 관련된 역사적 사건이나 인물을 생각해보세요!`
+          : `이 개념은 우리 역사에서 매우 중요한 역할을 했어요. 문제에서 언급된 시대나 상황을 중심으로 다시 생각해보세요!`)
+    : '관련 개념을 교과서에서 찾아보세요!';
+
+  return dataHint;
 }
 
 // ── 인물별 기본 정보 (fallback용) ──────────────────────────────

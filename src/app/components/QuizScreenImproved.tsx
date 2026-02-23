@@ -85,29 +85,26 @@ export function QuizScreen({
     return '한국사';
   };
 
-  // 단계별 힌트 생성: 1단계=개념 조개, 2단계=첫 글자+글자수, 3단계=세 번째 힌트(정답 미공개)
+  /**
+   * 자이가르닉 효과 기반 개념 힌트 (fallback용)
+   * - 글자수·첫글자 같은 '형태 정보' 절대 포함 금지
+   * - quizData의 hints 배열을 그대로 활용 (개념 설명으로 작성된 힌트)
+   * - hints 배열이 없을 때만 범용 개념 안내 문구로 대체
+   */
   const buildStepHint = (step: number): string => {
-    const ans = question.answer;
-    const len = ans.length;
+    const hints = question.hints ?? [];
+
     if (step === 1) {
-      return question.hints?.[0] ?? `이 문제의 정답은 ${len}글자예요. 천천히 생각해보세요!`;
+      return hints[0]
+        ?? `이 문제와 관련된 역사적 배경을 떠올려 보세요. 교과서에서 배운 내용을 기억해보세요!`;
     }
     if (step === 2) {
-      const baseHint = question.hints?.[1] ?? '';
-      const firstChar = ans[0];
-      const masked = firstChar + '■'.repeat(Math.max(len - 1, 0));
-      return baseHint
-        ? `${baseHint} (첫 글자는 "${firstChar}", 총 ${len}글자예요: ${masked})`
-        : `첫 글자는 "${firstChar}", 총 ${len}글자예요: ${masked}`;
+      return hints[1]
+        ?? `문제를 다시 천천히 읽어보세요. 문제 속 단어들이 중요한 힌트예요. 관련 사건이나 인물을 생각해보세요!`;
     }
-    // step === 3: 세 번째 힌트 (정답 미공개, 최대한 쉬운 설명)
-    const thirdHint = question.hints?.[2] ?? '';
-    const firstChar = ans[0];
-    const lastChar = ans[len - 1];
-    if (thirdHint) {
-      return `마지막 힌트! ${thirdHint}`;
-    }
-    return `마지막 힌트! 정답은 "${firstChar}"로 시작해서 "${lastChar}"로 끝나는 ${len}글자 단어예요.`;
+    // step === 3: 핵심 개념 설명, 정답 단어 미포함
+    return hints[2]
+      ?? `이 개념은 우리 역사에서 매우 중요한 역할을 했어요. 문제에서 언급된 시대적 상황과 연결해서 다시 한번 생각해보세요!`;
   };
 
   const handleShowHint = async () => {
