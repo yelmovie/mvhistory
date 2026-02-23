@@ -361,7 +361,7 @@ export function CharacterChatScreen({
   // ── 스크롤 ────────────────────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, turnsLeft]);
 
   // ── initialCharacter: 외부에서 바로 대화 시작 트리거 ──────────
   useEffect(() => {
@@ -1408,17 +1408,25 @@ export function CharacterChatScreen({
 
                   <div className="flex items-center gap-2">
                     <span
-                      className={`px-3 py-1 rounded-full text-xs font-bold ${
+                      className={`px-3 py-1 rounded-full text-xs font-bold transition-all ${
                         isChatEnded
                           ? dark ? "bg-emerald-800/60 text-emerald-300" : "bg-emerald-100 text-emerald-700"
-                          : isNearEnd
-                            ? "bg-amber-100 text-amber-600 animate-pulse"
+                          : turnsLeft === 1
+                            ? "bg-red-500 text-white animate-pulse"
+                            : turnsLeft === 2
+                            ? "bg-orange-400 text-white animate-pulse"
+                            : isNearEnd
+                            ? "bg-amber-100 text-amber-700 animate-pulse"
                             : dark
                               ? "bg-purple-500/20 text-purple-300"
                               : "bg-purple-100 text-purple-700"
                       }`}
                     >
-                      {isChatEnded ? `🎓 ${t(lang, 'chatEnded')}` : `💬 ${userTurnCount}/${MAX_TURNS}`}
+                      {isChatEnded
+                        ? `🎓 ${t(lang, 'chatEnded')}`
+                        : isNearEnd
+                          ? `⚠️ ${turnsLeft}턴 남음`
+                          : `💬 ${userTurnCount}/${MAX_TURNS}턴`}
                     </span>
                     {isChatEnded && (
                       <motion.button
@@ -1532,6 +1540,45 @@ export function CharacterChatScreen({
                       </div>
                     </motion.div>
                   ))}
+                </AnimatePresence>
+
+                {/* 남은 턴 경고 배너 */}
+                <AnimatePresence>
+                  {!isChatEnded && isNearEnd && !isLoading && (
+                    <motion.div
+                      key={`turn-warning-${turnsLeft}`}
+                      initial={{ opacity: 0, y: 8, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.9 }}
+                      transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                      className="flex justify-center"
+                    >
+                      <div
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl shadow-md text-sm font-bold border-2 ${
+                          turnsLeft === 1
+                            ? dark
+                              ? "bg-red-900/60 border-red-500/60 text-red-200"
+                              : "bg-red-50 border-red-400 text-red-700"
+                            : turnsLeft === 2
+                            ? dark
+                              ? "bg-orange-900/60 border-orange-500/60 text-orange-200"
+                              : "bg-orange-50 border-orange-400 text-orange-700"
+                            : dark
+                            ? "bg-amber-900/60 border-amber-500/60 text-amber-200"
+                            : "bg-amber-50 border-amber-400 text-amber-700"
+                        }`}
+                      >
+                        <span className="text-base">
+                          {turnsLeft === 1 ? "⚠️" : turnsLeft === 2 ? "🔔" : "💡"}
+                        </span>
+                        <span>
+                          {turnsLeft === 1
+                            ? `마지막 질문이에요! 꼭 하고 싶은 말을 전해보세요 🙏`
+                            : `앞으로 ${turnsLeft}턴 남았어요. 슬슬 마무리 질문을 준비해요!`}
+                        </span>
+                      </div>
+                    </motion.div>
+                  )}
                 </AnimatePresence>
 
                 {/* 로딩 */}
@@ -1666,9 +1713,21 @@ export function CharacterChatScreen({
                     <span className={`font-semibold ${dark ? "text-gray-400" : "text-gray-500"}`}>
                       💬 {t(lang, 'chatHint')}
                     </span>
-                    {isNearEnd && (
-                      <span className="ml-auto text-amber-500 font-bold animate-pulse text-xs">
-                        ✨ {turnsLeft}번 남음
+                    {isNearEnd ? (
+                      <span
+                        className={`ml-auto font-bold animate-pulse text-xs px-2 py-0.5 rounded-full ${
+                          turnsLeft === 1
+                            ? "bg-red-500 text-white"
+                            : turnsLeft === 2
+                            ? "bg-orange-400 text-white"
+                            : "bg-amber-400 text-white"
+                        }`}
+                      >
+                        {turnsLeft === 1 ? "⚠️ 마지막 질문!" : `⏰ ${turnsLeft}턴 남음`}
+                      </span>
+                    ) : (
+                      <span className={`ml-auto text-xs ${dark ? "text-gray-600" : "text-gray-400"}`}>
+                        {turnsLeft}턴 남음
                       </span>
                     )}
                   </div>
