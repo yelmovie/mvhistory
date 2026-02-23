@@ -548,6 +548,7 @@ export default function App() {
               pendingStart={pendingStart}
               onClearPendingStart={() => setPendingStart(false)}
               onGoToAdmin={() => setCurrentScreen('admin')}
+              unlockedCardCount={unlockedIds.size}
             />
             <LoginModal
               isOpen={isLoginModalOpen}

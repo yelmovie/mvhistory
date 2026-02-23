@@ -37,6 +37,8 @@ interface WelcomeScreenProps {
   pendingStart?: boolean;
   onClearPendingStart?: () => void;
   onGoToAdmin?: () => void;
+  /** 해금된 캐릭터 카드 수 (App.tsx의 unlockedIds.size) */
+  unlockedCardCount?: number;
 }
 
 export function WelcomeScreen({ 
@@ -56,6 +58,7 @@ export function WelcomeScreen({
   pendingStart = false,
   onClearPendingStart,
   onGoToAdmin,
+  unlockedCardCount = 0,
 }: WelcomeScreenProps) {
   // 개발자 모드 진입: 저작권 문구를 5회 연속 클릭
   const [adminClickCount, setAdminClickCount] = useState(0);
@@ -90,29 +93,86 @@ export function WelcomeScreen({
     }
   };
 
-  // 대화한 역사 인물 수 (localStorage)
-  const chattedCount = currentUser
-    ? getChattedCharacterCount(currentUser.email || currentUser.name)
-    : 0;
+  // 대화한 역사 인물 수: 로그인 여부와 무관하게 localStorage에서 읽기
+  const chattedCount = (() => {
+    // 1순위: 로그인 유저 email/name으로 조회
+    if (currentUser) {
+      return getChattedCharacterCount(currentUser.email || currentUser.name);
+    }
+    // 2순위: study_record_* 키 중 첫 번째 레코드 (비로그인 상태에도 기록이 있을 수 있음)
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key?.startsWith('study_record_')) {
+          const raw = localStorage.getItem(key);
+          if (raw) {
+            const rec = JSON.parse(raw);
+            if (Array.isArray(rec.chattedCharacterIds)) {
+              return rec.chattedCharacterIds.length;
+            }
+          }
+        }
+      }
+    } catch { /* ignore */ }
+    return 0;
+  })();
 
-  // Use real data from Supabase or fallback to mock data
-  const userStats = userProfile ? {
-    level: userProfile.level,
-    exp: userProfile.exp,
-    maxExp: userProfile.maxExp,
-    totalCards: 0,
-    totalCardsAvailable: 210,
-    chattedCount,
-    points: userProfile.points
-  } : {
-    level: 1,
-    exp: 0,
-    maxExp: 100,
-    totalCards: 0,
-    totalCardsAvailable: 210,
-    chattedCount,
-    points: 0
-  };
+  // leaderboard에서 내 최고 점수 읽기 (서버 미연결 시 fallback용)
+  const myBoardEntry = (() => {
+    try {
+      const raw = localStorage.getItem('global_leaderboard');
+      if (!raw) return null;
+      const entries = JSON.parse(raw) as Array<{ name: string; score: number; level: number; expInLevel: number }>;
+      const name = currentUser?.name;
+      if (!name) return entries.sort((a, b) => b.score - a.score)[0] ?? null;
+      return entries.find(e => e.name === name) ?? null;
+    } catch { return null; }
+  })();
+
+  // 실제 통계 계산
+  const userStats = (() => {
+    // 서버에서 받은 userProfile이 기본값(level:1, exp:0)이 아닌 경우 우선 사용
+    const hasRealProfile = userProfile && (userProfile.level > 1 || userProfile.exp > 0 || userProfile.points > 0);
+
+    if (hasRealProfile) {
+      return {
+        level: userProfile!.level,
+        exp: userProfile!.exp,
+        maxExp: userProfile!.maxExp,
+        totalCards: unlockedCardCount,
+        totalCardsAvailable: 210,
+        chattedCount,
+        points: userProfile!.points,
+      };
+    }
+
+    // leaderboard localStorage에서 레벨/경험치 계산
+    if (myBoardEntry) {
+      const score = myBoardEntry.score ?? 0;
+      const level = myBoardEntry.level ?? (Math.floor(score / 10000) + 1);
+      const expInLevel = myBoardEntry.expInLevel ?? (score % 10000);
+      return {
+        level,
+        exp: expInLevel,
+        maxExp: 10000,
+        totalCards: unlockedCardCount,
+        totalCardsAvailable: 210,
+        chattedCount,
+        points: score,
+      };
+    }
+
+    // 완전 초기값
+    return {
+      level: 1,
+      exp: 0,
+      maxExp: 10000,
+      totalCards: unlockedCardCount,
+      totalCardsAvailable: 210,
+      chattedCount,
+      points: 0,
+    };
+  })();
 
   const handleScroll = (direction: 'left' | 'right') => {
     if (!scrollContainerRef.current) return;
