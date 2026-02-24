@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import {
   ArrowLeft, Send, Sparkles, X, Home,
   AlertCircle, Search, ChevronRight, Settings,
-  RefreshCw, MessageCircle,
+  MessageCircle,
 } from "lucide-react";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { getOpenAIApiKey } from "../utils/openaiApi";
@@ -21,8 +21,6 @@ const _SERVER_BASE = `${_SUPABASE_URL}/functions/v1/make-server-48be01a5`;
 const SERVER_ENABLED = false;
 const SERVER_BASE = SERVER_ENABLED ? _SERVER_BASE : null;
 const MAX_TURNS = 10;
-/** 한 인물과 재시작할 수 있는 최대 횟수 (과금 방지) */
-const MAX_RESTARTS = 2;
 
 
 // ── 욕설·비방·원색 필터 ────────────────────────────────────────
@@ -322,8 +320,6 @@ export function CharacterChatScreen({
   const [showUnlockNotification, setShowUnlockNotification] = useState(false);
   const [badWordWarning, setBadWordWarning] = useState(false);
   const [isChatEnded, setIsChatEnded] = useState(false);
-  // 과금 방지: 인물별 재시작 횟수 추적 (Map: characterId → restartCount)
-  const [restartCounts, setRestartCounts] = useState<Map<string, number>>(new Map());
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedPeriod, setSelectedPeriod] = useState<string>("전체");
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
@@ -620,41 +616,6 @@ export function CharacterChatScreen({
     }
   };
 
-  const handleRestartChat = () => {
-    if (!selectedCharacter) return;
-
-    // 과금 방지: 인물별 재시작 횟수 제한
-    const charId = selectedCharacter.id;
-    const currentRestarts = restartCounts.get(charId) ?? 0;
-    if (currentRestarts >= MAX_RESTARTS) {
-      // 이미 최대 재시작 횟수 초과 → 재시작 차단, 안내만 표시
-      setMessages(prev => [
-        ...prev,
-        {
-          id: Date.now().toString(),
-          text: `⚠️ ${selectedCharacter.name}과(와)의 대화는 오늘 최대 ${MAX_RESTARTS}회 재시작할 수 있어요. 내일 다시 만나요! 📚`,
-          sender: "character",
-          timestamp: new Date(),
-        },
-      ]);
-      return;
-    }
-
-    setRestartCounts(prev => {
-      const next = new Map(prev);
-      next.set(charId, currentRestarts + 1);
-      return next;
-    });
-    setMessages([
-      {
-        id: Date.now().toString(),
-        text: buildGreeting(selectedCharacter),
-        sender: "character",
-        timestamp: new Date(),
-      },
-    ]);
-    setIsChatEnded(false);
-  };
 
   // 나가기 버튼 클릭 → 대화 중이면 팝업, 아니면 바로 나가기
   const handleExitClick = () => {
@@ -1458,16 +1419,7 @@ export function CharacterChatScreen({
                           ? `⚠️ ${turnsLeft}턴 남음`
                           : `💬 ${userTurnCount}/${MAX_TURNS}턴`}
                     </span>
-                    {isChatEnded && (
-                      <motion.button
-                        whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
-                        onClick={handleRestartChat}
-                        className={`p-2 rounded-lg ${dark ? "bg-gray-800 hover:bg-gray-700" : "bg-white hover:bg-gray-100"} shadow`}
-                        title={t(lang, 'restartChat')}
-                      >
-                        <RefreshCw className="w-4 h-4" />
-                      </motion.button>
-                    )}
+                    {/* 재시작 버튼 제거: 인물당 대화 1회만 허용 */}
                   </div>
                 </div>
 
@@ -1684,15 +1636,6 @@ export function CharacterChatScreen({
                         🏆 {t(lang, 'registerScore')}
                       </button>
                       <div className="flex gap-2">
-                        <button
-                          onClick={handleRestartChat}
-                          className={`flex-1 py-2.5 rounded-xl text-sm font-bold transition-all ${
-                            dark ? "bg-gray-700 hover:bg-gray-600 text-white" : "bg-white hover:bg-gray-50 text-gray-700 border border-gray-200"
-                          } shadow`}
-                        >
-                          <RefreshCw className="w-3.5 h-3.5 inline mr-1" />
-                          {t(lang, 'restartChat')}
-                        </button>
                         <button
                           onClick={() => setSelectedCharacter(null)}
                           className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white shadow"
