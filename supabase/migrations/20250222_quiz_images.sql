@@ -45,5 +45,14 @@ alter table public.quiz_images enable row level security;
 drop policy if exists "Service role full access" on public.quiz_images;
 create policy "Service role full access"
   on public.quiz_images
+  to service_role
   using (true)
   with check (true);
+
+-- Explicit Data API privileges; table grants do not bypass existing RLS.
+-- Image metadata/cache is shared; anonymous clients never receive write grants.
+drop policy if exists "Public can read quiz images" on public.quiz_images;
+create policy "Public can read quiz images" on public.quiz_images
+  for select to anon, authenticated using (true);
+grant select on table public.quiz_images to anon, authenticated;
+grant select, insert, update on table public.quiz_images to service_role;
